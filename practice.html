@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Night Shift — Grocery Store (AP CSA)</title>
+<style>
+  body { margin: 0; overflow: hidden; font-family: sans-serif; background: #000; color: #ddd; }
+  #overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    z-index: 10;
+  }
+  #overlay h1 { margin: 0 0 12px; font-size: 36px; letter-spacing: 4px; color: #b33; }
+  #overlay p  { margin: 6px 0; font-size: 16px; opacity: 0.85; }
+  #overlay .key {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    margin: 0 2px;
+    font-family: monospace;
+  }
+  #info {
+    position: fixed; top: 8px; left: 8px;
+    font-size: 12px; opacity: 0.55;
+    pointer-events: none;
+  }
+  #debug {
+    position: fixed; bottom: 8px; left: 8px;
+    font-size: 11px; opacity: 0.7;
+    font-family: monospace;
+    pointer-events: none;
+    line-height: 1.4;
+    white-space: pre;
+  }
+  /* Sprint stamina bar — vertical, pinned to the right side of the screen. */
+  #sprint-meter {
+    position: fixed;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+    height: 220px;
+    background: rgba(10, 10, 14, 0.6);
+    border: 1px solid rgba(200, 200, 220, 0.25);
+    border-radius: 3px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+  }
+  #sprint-meter-fill {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 100%;
+    background: linear-gradient(to top, #b6c4cc, #f0f4f6);
+    transition: background 0.2s linear;
+  }
+  /* When stamina is low, the fill turns red to warn the player. */
+  #sprint-meter.low #sprint-meter-fill {
+    background: linear-gradient(to top, #6a1414, #c83030);
+  }
+  /* Cinematic darkening of the screen corners — kept gentle so the
+     center stays lit and only the very edges feel "framed". */
+  #vignette {
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 50%,
+      rgba(0,0,0,0.25) 85%,
+      rgba(0,0,0,0.55) 100%);
+    pointer-events: none;
+    z-index: 4;
+  }
+  /* Animated film-grain overlay — SVG fractal noise, panned a bit each
+     frame so it shimmers instead of sitting flat. */
+  #grain {
+    position: fixed; inset: -10%;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.7 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    opacity: 0.09;
+    mix-blend-mode: screen;
+    pointer-events: none;
+    z-index: 4;
+    animation: grain 0.6s steps(6) infinite;
+  }
+  @keyframes grain {
+    0%,100% { transform: translate(0, 0); }
+    16%     { transform: translate(-3%, -2%); }
+    33%     { transform: translate( 2%, -3%); }
+    50%     { transform: translate(-2%,  2%); }
+    66%     { transform: translate( 3%,  3%); }
+    83%     { transform: translate(-3%,  0%); }
+  }
+  /* Game-over overlay shown when a mannequin catches the player. */
+  #gameover {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.93);
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    z-index: 100;
+  }
+  #gameover h1 {
+    margin: 0;
+    font-size: 56px;
+    letter-spacing: 6px;
+    color: #b22;
+    text-shadow: 0 0 24px rgba(180, 30, 30, 0.55);
+    font-family: sans-serif;
+  }
+  #gameover button {
+    margin-top: 36px;
+    padding: 14px 36px;
+    background: #1a1a1a;
+    color: #eee;
+    border: 1px solid #555;
+    font-family: monospace;
+    font-size: 18px;
+    letter-spacing: 3px;
+    cursor: pointer;
+  }
+  #gameover button:hover {
+    background: #2a1010;
+    border-color: #b22;
+    color: #fff;
+  }
+  /* Hotbar — 8 slots along the bottom centre of the screen. Style mimics
+     the Lethal-Company-style L-corner brackets: only the slot corners are
+     drawn, not full borders. Selected slot has brighter/longer corners. */
+  #hotbar {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    pointer-events: none;
+    z-index: 6;
+    font-family: monospace;
+  }
+  #hotbar .slot {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    background-color: rgba(8, 12, 16, 0.4);
+    --c: rgba(180, 200, 220, 0.5);
+    --t: 13px;
+    --w: 1.5px;
+    /* 8 thin rectangles, one per corner-leg, painted via 8 gradients. */
+    background-image:
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c)),
+      linear-gradient(var(--c), var(--c));
+    background-position:
+      top left,    top left,
+      top right,   top right,
+      bottom left, bottom left,
+      bottom right,bottom right;
+    background-size:
+      var(--t) var(--w), var(--w) var(--t),
+      var(--t) var(--w), var(--w) var(--t),
+      var(--t) var(--w), var(--w) var(--t),
+      var(--t) var(--w), var(--w) var(--t);
+    background-repeat: no-repeat;
+  }
+  #hotbar .slot.selected {
+    --c: rgba(245, 250, 255, 0.95);
+    --t: 18px;
+    --w: 2px;
+    background-color: rgba(40, 60, 80, 0.5);
+    box-shadow: 0 0 10px rgba(180, 220, 255, 0.25);
+  }
+  #hotbar .num {
+    position: absolute;
+    top: 4px; left: 6px;
+    font-size: 10px;
+    color: rgba(180, 200, 220, 0.6);
+    letter-spacing: 0;
+  }
+  #hotbar .slot.selected .num {
+    color: rgba(240, 250, 255, 0.95);
+  }
+  #hotbar .label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    letter-spacing: 1px;
+    color: rgba(220, 230, 240, 0.85);
+  }
+  /* Center-screen crosshair — small white dot. */
+  #crosshair {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 4px; height: 4px;
+    background: rgba(240, 245, 250, 0.85);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 2px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.5);
+  }
+  /* Prompt that appears under the crosshair when looking at an interactable. */
+  #prompt {
+    position: fixed;
+    top: calc(50% + 18px);
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(240, 245, 250, 0.92);
+    font-family: sans-serif;
+    font-size: 14px;
+    letter-spacing: 1px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 8px rgba(0,0,0,0.6);
+    pointer-events: none;
+    z-index: 5;
+    display: none;
+    white-space: nowrap;
+  }
+  #prompt.warn { color: rgba(220, 90, 90, 0.95); }
+</style>
+
+<!--
+  Three.js is loaded from a CDN with an "importmap" so the rest of the
+  script can write `import ... from 'three'` without any build tools.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="overlay">
+  <h1>NIGHT SHIFT</h1>
+  <p>You are working the late shift at the grocery store.</p>
+  <p>Click anywhere to start</p>
+  <p>
+    <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> to move
+    &nbsp;·&nbsp; <span class="key">Mouse</span> to look
+    &nbsp;·&nbsp; <span class="key">Esc</span> to release the mouse
+  </p>
+</div>
+
+<div id="info">Walk the aisles. Hold <b>Shift</b> to sprint.</div>
+<div id="debug">pos: ?</div>
+<div id="sprint-meter"><div id="sprint-meter-fill"></div></div>
+<div id="vignette"></div>
+<div id="grain"></div>
+<div id="gameover">
+  <h1>YOU DIED</h1>
+  <button id="retry">TRY AGAIN</button>
+</div>
+<div id="hotbar"></div>
+<div id="crosshair"></div>
+<div id="prompt"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+// ============================================================
+// CONFIG — change these to tweak the store without digging deeper.
+// (Java analogy: these are like `public static final` fields.)
+// ============================================================
+
+// Store footprint. The store is centered on origin:
+//   x in [-STORE_W/2, +STORE_W/2]   (west <-> east)
+//   z in [-STORE_D/2, +STORE_D/2]   (north <-> south)
+// North end (z negative) = back wall.
+// South end (z positive) = front of store with windows + entrance.
+const STORE_W    = 40;
+const STORE_D    = 90;      // longer store — more aisle to walk before the back
+const STORE_H    = 5.5;     // taller ceiling — leaves room for the flashlight beam
+const WALL_THICK = 0.3;
+
+// Shelves run north-south. Fewer rows than before so the outer aisles can
+// hold produce-island tables.
+const NUM_SHELF_ROWS  = 6;
+const SHELF_PITCH     = 4.5;   // center-to-center distance between rows
+const SHELF_LENGTH    = 56;    // total length of a row (segments + gaps)
+const SHELF_SEGMENTS  = 4;     // each row is split into N pieces so the
+const SHELF_GAP       = 2.5;   //   player can run through the gaps between
+const SHELF_ROW_WIDTH = 1.2;
+const SHELF_HEIGHT    = 2.0;
+const SHELF_LEVELS    = 4;     // tiers per side
+// Y position of each tier (the top surface of the slab — where items sit).
+const SHELF_LEVEL_HEIGHTS = [0.25, 0.75, 1.25, 1.75];
+const SHELF_CENTER_Z = -10;    // shelves span z = [-38, +18]
+
+// Checkout area (between the shelves and the south entrance).
+const NUM_REGISTERS    = 4;
+const REGISTER_SPACING = 7;
+const REGISTER_Z       = 30;
+const REGISTER_LENGTH  = 3.5;
+const REGISTER_WIDTH   = 1.0;
+const REGISTER_HEIGHT  = 0.9;
+
+// Windows on the front (south) wall. Each entry is one window opening.
+// The bits of wall above and below the opening stay solid for collision.
+const WINDOW_Y_MIN = 1.0;
+const WINDOW_Y_MAX = 2.8;
+const WINDOWS = [
+  { xMin: -17, xMax: -10 },
+  { xMin:  -7, xMax:  -2 },
+  { xMin:   2, xMax:   7 },
+  { xMin:  10, xMax:  17 },
+];
+
+// Player
+const PLAYER_HEIGHT = 1.6;
+const PLAYER_RADIUS = 0.35;
+const MOVE_SPEED    = 4.0;
+const SPRINT_SPEED  = 7.2;     // when Shift is held and stamina > 0
+const SPRINT_MAX    = 5.0;     // seconds of sprint from full
+const SPRINT_DRAIN  = 1.0;     // stamina lost per second while sprinting
+const SPRINT_REGEN  = 0.65;    // stamina regained per second while not sprinting
+
+// Head bob — small sine oscillation of the camera height while walking.
+const BOB_AMPLITUDE = 0.055;
+const WALK_BOB_FREQ = 8.0;
+const SPRINT_BOB_FREQ = 12.0;
+
+// Mannequins.
+// Swap the image by putting a PNG at this path (transparent background,
+// portrait orientation, taller than it is wide). If the file can't be loaded
+// the game falls back to a procedural silhouette so nothing breaks.
+const MANNEQUIN_TEXTURE_URL = 'mannequin.png';
+const NUM_MANNEQUINS  = 7;
+const MANNEQUIN_WIDTH  = 1.1;
+const MANNEQUIN_HEIGHT = 2.0;
+const MANNEQUIN_RADIUS = 0.3;   // collision radius — narrow so they can squeeze through cross-aisles
+const MANNEQUIN_SPEED  = 5.0;   // between walk (4.0) and sprint (7.2)
+const MANNEQUIN_CATCH_DIST = 0.95;
+
+// Lighting — kept dim on purpose. The store should feel almost dark; the
+// player will get a flashlight later. Slight cool tint everywhere.
+const AMBIENT_INTENSITY = 0.04;        // dropped — flashlight should matter
+const AMBIENT_COLOR     = 0xc8d4e0;    // cool fill light
+const CEILING_LIGHT_INTENSITY = 0.18;  // ceiling fluorescents barely on
+const FOG_DENSITY = 0.06;              // a touch thicker
+const FOG_COLOR   = 0x04060c;        // very dark navy — used for fog + bg
+
+// ============================================================
+// SCENE / CAMERA / RENDERER
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(FOG_COLOR);
+scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);
+
+const camera = new THREE.PerspectiveCamera(
+  75, window.innerWidth / window.innerHeight, 0.1, 200
+);
+// Spawn just inside the south entrance, looking north (into the store).
+camera.position.set(0, PLAYER_HEIGHT, STORE_D / 2 - 3);
+// DEBUG: expose camera + scene so the agent-browser eval can re-position
+// the player for screenshots. Safe to leave in — it has no effect on play.
+window.__cam = camera; window.__scene = scene;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+// Cap pixel ratio at 1.5 — on retina displays devicePixelRatio is 2 or 3,
+// which means rendering 4-9× as many pixels as needed for this style of
+// game. Capping cuts fillrate cost roughly in half on a MacBook Retina
+// with very little visible difference (the scene is already dark + foggy).
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// Filmic tone mapping — squashes highlights and curves shadows so the
+// scene looks like a camera image rather than a flat 3D render.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+// LIGHTING
+// ============================================================
+scene.add(new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_INTENSITY));
+
+// ---- Flashlight (handheld spotlight attached to the camera) -------------
+// Cone of warm white light pointing forward, follows the camera's orientation.
+// Default ON; the inventory system later toggles it based on the selected slot.
+const flashlight = new THREE.SpotLight(
+  0xffeed8,   // warm white
+  3.2,        // intensity
+  18,         // distance falloff range
+  Math.PI / 6.5, // cone half-angle (~28°)
+  0.45,       // penumbra (soft edge)
+  1.2         // decay
+);
+flashlight.position.set(0, -0.08, 0); // chest-height feel
+camera.add(flashlight);
+// Target is a child of camera so it always points down the camera's local -Z.
+const flashlightTarget = new THREE.Object3D();
+flashlightTarget.position.set(0, -0.1, -1);
+camera.add(flashlightTarget);
+flashlight.target = flashlightTarget;
+
+const ceilingLights = [];
+function addCeilingLight(x, z, lit = true) {
+  // Visible fluorescent bar — bright enough to read as "the light" in the
+  // dark store, but not pure white (which the tone-mapper would clip).
+  const bulb = new THREE.Mesh(
+    new THREE.BoxGeometry(0.25, 0.08, 2.0),
+    new THREE.MeshBasicMaterial({ color: 0xede1c4, fog: true })
+  );
+  bulb.position.set(x, STORE_H - 0.08, z);
+  scene.add(bulb);
+
+  // Actual light source — the per-fragment cost of PointLights on
+  // MeshStandardMaterial is the biggest perf hit in this scene, so we
+  // keep the count low and skip them entirely on filler positions.
+  if (lit) {
+    const light = new THREE.PointLight(0xfff0c8, CEILING_LIGHT_INTENSITY, 22, 1.5);
+    light.position.set(x, STORE_H - 0.2, z);
+    scene.add(light);
+    ceilingLights.push(light);
+  }
+}
+
+// 12 real PointLights in a 3×4 grid, wider spacing. Slightly punchier
+// per-light intensity so the overall scene brightness stays similar.
+for (let xi = -1; xi <= 1; xi++) {
+  for (let zi = -1.5; zi <= 1.5; zi++) {
+    addCeilingLight(xi * 12, zi * 18, true);
+  }
+}
+// Decorative bulbs in between — cheap (MeshBasicMaterial, no light source),
+// so we can scatter as many as we like to keep the ceiling visually dense.
+for (let xi = -2; xi <= 2; xi++) {
+  for (let zi = -3; zi <= 3; zi++) {
+    addCeilingLight(xi * 6 + 3, zi * 9 + 4.5, false);
+  }
+}
+
+// ============================================================
+// FLOOR + CEILING
+// ============================================================
+// Dirty linoleum / commercial tile floor. Big tiles, low-contrast grout,
+// per-tile color jitter, fine-grain noise, and faint scratches.
+function makeFloorTileTexture(size = 512, tilesPerSide = 4) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+
+  // Base color — very dark gray with a slight cool cast.
+  ctx.fillStyle = '#23252a';
+  ctx.fillRect(0, 0, size, size);
+
+  // Per-tile color jitter so the floor doesn't read as one flat plane.
+  const step = size / tilesPerSide;
+  for (let i = 0; i < tilesPerSide; i++) {
+    for (let j = 0; j < tilesPerSide; j++) {
+      const v = 32 + Math.floor(Math.random() * 14);
+      ctx.fillStyle = `rgba(${v}, ${v}, ${v + 3}, 0.55)`;
+      ctx.fillRect(i * step + 3, j * step + 3, step - 6, step - 6);
+    }
+  }
+
+  // Low-contrast grout lines between tiles.
+  ctx.strokeStyle = '#101116';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= tilesPerSide; i++) {
+    ctx.beginPath(); ctx.moveTo(i * step, 0); ctx.lineTo(i * step, size); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * step); ctx.lineTo(size, i * step); ctx.stroke();
+  }
+
+  // Fine-grain pixel noise.
+  const img = ctx.getImageData(0, 0, size, size);
+  const data = img.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 22;
+    data[i]     = Math.max(0, Math.min(255, data[i]     + n));
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n));
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n));
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // Random thin scratches.
+  ctx.strokeStyle = 'rgba(120, 120, 130, 0.18)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 36; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const len = 8 + Math.random() * 26;
+    const ang = Math.random() * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+const floorTex = makeFloorTileTexture();
+// Each texture tile = ~2 m of floor (4 grid squares per tile).
+floorTex.repeat.set(STORE_W / 8, STORE_D / 8);
+
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(STORE_W, STORE_D),
+  new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 })
+);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+const ceiling = new THREE.Mesh(
+  new THREE.PlaneGeometry(STORE_W, STORE_D),
+  new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 1.0 })
+);
+ceiling.position.y = STORE_H;
+ceiling.rotation.x = Math.PI / 2;
+scene.add(ceiling);
+
+// ============================================================
+// NIGHT SKY texture (used for the panels visible through windows).
+// Procedurally drawn on a <canvas> so we don't need any image files.
+// ============================================================
+function makeNightSkyTexture(width = 512, height = 256) {
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, height);
+  grad.addColorStop(0, '#020412');
+  grad.addColorStop(1, '#0a0e22');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+  for (let i = 0; i < 140; i++) {
+    const x = Math.random() * width;
+    const y = Math.random() * height * 0.9;
+    const r = Math.random() < 0.85 ? 0.7 : 1.4;
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + Math.random() * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return new THREE.CanvasTexture(c);
+}
+const nightSkyTex = makeNightSkyTexture();
+
+// ============================================================
+// CONCRETE WALL TEXTURE — grimy gray with noise, vertical drip streaks,
+// and dark blotches. Makes the walls look old and abandoned.
+// ============================================================
+function makeConcreteTexture(size = 512) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+
+  ctx.fillStyle = '#6a6a6a';
+  ctx.fillRect(0, 0, size, size);
+
+  // Fine-grain noise.
+  const img = ctx.getImageData(0, 0, size, size);
+  const data = img.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 35;
+    data[i]     = Math.max(0, Math.min(255, data[i]     + n));
+    data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n));
+    data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n));
+  }
+  ctx.putImageData(img, 0, 0);
+
+  // Vertical drip streaks (water / grime running down the wall).
+  for (let i = 0; i < 22; i++) {
+    const x = Math.random() * size;
+    const w = 1 + Math.random() * 3;
+    const yStart = Math.random() * size * 0.4;
+    const yEnd = yStart + size * (0.3 + Math.random() * 0.5);
+    const grad = ctx.createLinearGradient(0, yStart, 0, yEnd);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.4, `rgba(0,0,0,${0.15 + Math.random() * 0.2})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, yStart, w, yEnd - yStart);
+  }
+
+  // Random dark blotches / stains.
+  for (let i = 0; i < 25; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 20 + Math.random() * 60;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(0,0,0,${0.1 + Math.random() * 0.2})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+const wallTex = makeConcreteTexture(512);
+
+// ============================================================
+// WALLS — every wall is an axis-aligned box pushed into `walls` for
+// collision (same pattern as the Granny project).
+// ============================================================
+const walls = []; // { xMin, xMax, zMin, zMax, yMin, yMax }
+
+function addWall(x1, z1, x2, z2, yMin = 0, yMax = STORE_H, color = 0xffffff) {
+  const xMin = Math.min(x1, x2), xMax = Math.max(x1, x2);
+  const zMin = Math.min(z1, z2), zMax = Math.max(z1, z2);
+  if (xMax - xMin < 0.001 && zMax - zMin < 0.001) return;
+  const w = Math.max(xMax - xMin, WALL_THICK);
+  const d = Math.max(zMax - zMin, WALL_THICK);
+  const h = yMax - yMin;
+
+  // Each wall gets its own texture clone, with the repeat sized to the
+  // long face — so a 30 m wall and a 3 m wall both look in-scale rather
+  // than one being a stretched smear and the other being tiny tiles.
+  const tex = wallTex.clone();
+  tex.needsUpdate = true;
+  const visibleSpan = Math.max(w, d);
+  tex.repeat.set(visibleSpan / 3, h / 3);  // ~1 tile per 3 m
+
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ map: tex, color, roughness: 0.95 })
+  );
+  mesh.position.set((xMin + xMax) / 2, (yMin + yMax) / 2, (zMin + zMax) / 2);
+  scene.add(mesh);
+
+  walls.push({
+    xMin: xMin - WALL_THICK / 2, xMax: xMax + WALL_THICK / 2,
+    zMin: zMin - WALL_THICK / 2, zMax: zMax + WALL_THICK / 2,
+    yMin, yMax
+  });
+}
+
+const hx = STORE_W / 2, hz = STORE_D / 2;
+
+// West, east, and north walls — fully solid.
+addWall(-hx, -hz, -hx,  hz);
+addWall( hx, -hz,  hx,  hz);
+addWall(-hx, -hz,  hx, -hz);
+
+// South wall — broken into segments around each window opening.
+function buildSouthWallWithWindows() {
+  const wins = [...WINDOWS].sort((a, b) => a.xMin - b.xMin);
+  let cursor = -hx;
+  for (const w of wins) {
+    // Solid bit of wall before this window.
+    if (w.xMin > cursor) addWall(cursor, hz, w.xMin, hz);
+    // Wall below the window opening (sill-height).
+    if (WINDOW_Y_MIN > 0) addWall(w.xMin, hz, w.xMax, hz, 0, WINDOW_Y_MIN);
+    // Wall above the window opening (header).
+    if (WINDOW_Y_MAX < STORE_H) addWall(w.xMin, hz, w.xMax, hz, WINDOW_Y_MAX, STORE_H);
+
+    // Night-sky panel just outside the opening, facing inward.
+    // fog: false so the sky doesn't get swallowed by the dark fog.
+    const sky = new THREE.Mesh(
+      new THREE.PlaneGeometry(w.xMax - w.xMin, WINDOW_Y_MAX - WINDOW_Y_MIN),
+      new THREE.MeshBasicMaterial({ map: nightSkyTex, fog: false })
+    );
+    sky.position.set(
+      (w.xMin + w.xMax) / 2,
+      (WINDOW_Y_MIN + WINDOW_Y_MAX) / 2,
+      hz + 0.06
+    );
+    sky.rotation.y = Math.PI; // face -Z (toward the player)
+    scene.add(sky);
+
+    // Window frame: top + bottom rails and side stiles.
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 1 });
+    const ft = 0.07, fd = 0.12;
+    for (const yc of [WINDOW_Y_MIN, WINDOW_Y_MAX]) {
+      const rail = new THREE.Mesh(
+        new THREE.BoxGeometry(w.xMax - w.xMin, ft, fd), frameMat
+      );
+      rail.position.set((w.xMin + w.xMax) / 2, yc, hz - 0.05);
+      scene.add(rail);
+    }
+    for (const xc of [w.xMin, w.xMax]) {
+      const stile = new THREE.Mesh(
+        new THREE.BoxGeometry(ft, WINDOW_Y_MAX - WINDOW_Y_MIN, fd), frameMat
+      );
+      stile.position.set(xc, (WINDOW_Y_MIN + WINDOW_Y_MAX) / 2, hz - 0.05);
+      scene.add(stile);
+    }
+
+    cursor = w.xMax;
+  }
+  if (cursor < hx) addWall(cursor, hz, hx, hz);
+}
+// Windows removed — the south wall is fully solid now.
+// (`buildSouthWallWithWindows` above is left in place for easy re-enable.)
+addWall(-hx, hz, hx, hz);
+
+// ============================================================
+// EXIT DOOR — set into the south wall behind the spawn point. Three
+// blockages cover it: wooden boards (needs crowbar), padlock (needs
+// key), fingerprint keypad (needs an arm taken from a red mannequin).
+// The door panel itself stays — only the blockages are removed when
+// the player clicks them while holding the matching item.
+// ============================================================
+const interactables = []; // anything the click-raycast cares about
+
+function buildExitDoor() {
+  const doorX = 0;
+  const doorZ = hz - 0.16;     // sits just inside the wall surface
+  const doorW = 1.8;
+  const doorH = 2.6;
+
+  // Door panel itself.
+  const doorMat = new THREE.MeshStandardMaterial({ color: 0x4a311c, roughness: 0.95 });
+  const door = new THREE.Mesh(new THREE.BoxGeometry(doorW, doorH, 0.08), doorMat);
+  door.position.set(doorX, doorH / 2, doorZ);
+  door.userData = { kind: 'door' };
+  scene.add(door);
+
+  // Frame around the door.
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a1c10, roughness: 1 });
+  const ft = 0.12, fd = 0.06;
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.32, ft, fd), frameMat);
+  lintel.position.set(doorX, doorH + ft / 2, doorZ - 0.04);
+  scene.add(lintel);
+  for (const side of [-1, 1]) {
+    const stile = new THREE.Mesh(new THREE.BoxGeometry(ft, doorH + ft, fd), frameMat);
+    stile.position.set(doorX + side * (doorW / 2 + ft / 2),
+                       (doorH + ft) / 2, doorZ - 0.04);
+    scene.add(stile);
+  }
+
+  // BOARDS — 3 horizontal planks across the door, removable with a crowbar.
+  const boardMat = new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.92 });
+  for (let i = 0; i < 3; i++) {
+    const y = 0.55 + i * 0.75;
+    const board = new THREE.Mesh(
+      new THREE.BoxGeometry(doorW + 0.2, 0.18, 0.06),
+      boardMat
+    );
+    board.position.set(doorX, y, doorZ - 0.08);
+    board.rotation.z = (Math.random() - 0.5) * 0.06;
+    board.userData = { unlocks: 'crowbar', kind: 'board' };
+    scene.add(board);
+    interactables.push(board);
+  }
+
+  // LOCK — small metallic padlock on the right side of the door.
+  const lockMat = new THREE.MeshStandardMaterial({
+    color: 0x4a4a4a, roughness: 0.4, metalness: 0.75
+  });
+  const lock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.1), lockMat);
+  lock.position.set(doorX + doorW / 2 - 0.18, 1.25, doorZ - 0.11);
+  lock.userData = { unlocks: 'key', kind: 'lock' };
+  scene.add(lock);
+  interactables.push(lock);
+  // Shackle on top of the lock (decorative).
+  const shackleMat = new THREE.MeshStandardMaterial({
+    color: 0x808080, roughness: 0.3, metalness: 0.85
+  });
+  const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 16, Math.PI), shackleMat);
+  shackle.position.set(lock.position.x, lock.position.y + 0.12, lock.position.z);
+  shackle.rotation.x = Math.PI / 2;
+  scene.add(shackle);
+
+  // KEYPAD — fingerprint scanner on the wall next to the door, removed with arm.
+  const padBaseMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
+  const padScreenMat = new THREE.MeshStandardMaterial({
+    color: 0x003322, roughness: 0.3, emissive: 0x115533, emissiveIntensity: 0.8
+  });
+  const padBase = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.05), padBaseMat);
+  padBase.position.set(doorX + doorW / 2 + 0.4, 1.35, doorZ - 0.03);
+  padBase.userData = { unlocks: 'arm', kind: 'keypad' };
+  scene.add(padBase);
+  interactables.push(padBase);
+  const padScreen = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.02), padScreenMat);
+  padScreen.position.set(padBase.position.x, padBase.position.y + 0.04, padBase.position.z - 0.03);
+  padScreen.userData = { unlocks: 'arm', kind: 'keypad' };
+  scene.add(padScreen);
+  interactables.push(padScreen);
+}
+buildExitDoor();
+
+// ============================================================
+// SHELVES — multi-tier, back-to-back, ready to hold items later.
+// ============================================================
+// Each "shelf row" is a back-to-back shelving unit running north-south.
+// A vertical back panel splits it into a west side and an east side; each
+// side has SHELF_LEVELS horizontal tiers.
+//
+// shelfSlots is the list future code can iterate over to put items (cereal
+// boxes, cans, etc.) on the shelves. One entry per usable spot.
+const shelfSlots = []; // { x, y, z, rowIndex, side: 'west'|'east', level }
+
+function addShelfRow(centerX, centerZ, length, rowIndex) {
+  // Materials. The post material has slight metalness so corner posts catch
+  // the ceiling light a little, like real metal uprights on a gondola shelf.
+  const shelfMat = new THREE.MeshStandardMaterial({
+    color: 0xc4c0b0, roughness: 0.85
+  });
+  const backMat = new THREE.MeshStandardMaterial({
+    color: 0x3a352e, roughness: 1.0
+  });
+  const postMat = new THREE.MeshStandardMaterial({
+    color: 0x7a7670, roughness: 0.55, metalness: 0.35
+  });
+  const stripMat = new THREE.MeshStandardMaterial({
+    color: 0xe6e2d0, roughness: 0.8
+  });
+
+  const halfWidth = SHELF_ROW_WIDTH / 2;
+  const slabT     = 0.06;
+
+  // Each row is split into SHELF_SEGMENTS pieces with SHELF_GAP gaps between
+  // them. Gaps line up across every row, so the player can sprint sideways
+  // through clear cross-aisles when a mannequin chases them down an aisle.
+  const segLength = (length - SHELF_GAP * (SHELF_SEGMENTS - 1)) / SHELF_SEGMENTS;
+  const rowStartZ = centerZ - length / 2;
+
+  for (let seg = 0; seg < SHELF_SEGMENTS; seg++) {
+    const segCenterZ = rowStartZ + segLength / 2 + seg * (segLength + SHELF_GAP);
+    const halfLen = segLength / 2;
+
+    // Back panel.
+    const back = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, SHELF_HEIGHT, segLength),
+      backMat
+    );
+    back.position.set(centerX, SHELF_HEIGHT / 2, segCenterZ);
+    scene.add(back);
+
+    // Top cap.
+    const topCap = new THREE.Mesh(
+      new THREE.BoxGeometry(SHELF_ROW_WIDTH, slabT, segLength),
+      shelfMat
+    );
+    topCap.position.set(centerX, SHELF_HEIGHT, segCenterZ);
+    scene.add(topCap);
+
+    // Vertical end-posts at each of the four corners — these are the
+    // metal uprights of a real gondola shelf. Without them the unit reads
+    // as "floating planks"; with them it reads as "shelving".
+    const postW = 0.09;
+    for (const xSign of [-1, +1]) {
+      for (const zSign of [-1, +1]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(postW, SHELF_HEIGHT, postW),
+          postMat
+        );
+        post.position.set(
+          centerX + xSign * (halfWidth - postW / 2),
+          SHELF_HEIGHT / 2,
+          segCenterZ + zSign * (halfLen - postW / 2)
+        );
+        scene.add(post);
+      }
+    }
+
+    // Toe kick — the dark panel at the floor that hides the gap below the
+    // lowest tier. Every grocery shelf has one.
+    const kickH = 0.15;
+    for (const sideSign of [-1, +1]) {
+      const kick = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, kickH, segLength),
+        backMat
+      );
+      kick.position.set(centerX + sideSign * halfWidth, kickH / 2, segCenterZ);
+      scene.add(kick);
+    }
+
+    // Tiers — one slab per side per level, with a white price-tag strip
+    // running along the front lip (where the price labels clip on).
+    for (let level = 0; level < SHELF_LEVELS; level++) {
+      const y = SHELF_LEVEL_HEIGHTS[level];
+      for (const side of ['west', 'east']) {
+        const sideSign = side === 'west' ? -1 : 1;
+        const slabCenterX = centerX + sideSign * (halfWidth / 2);
+        const slab = new THREE.Mesh(
+          new THREE.BoxGeometry(halfWidth, slabT, segLength),
+          shelfMat
+        );
+        slab.position.set(slabCenterX, y, segCenterZ);
+        scene.add(slab);
+
+        // Price-tag strip on the outer (aisle-facing) edge of this slab.
+        const strip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.02, 0.05, segLength),
+          stripMat
+        );
+        strip.position.set(
+          centerX + sideSign * halfWidth, y + 0.025, segCenterZ
+        );
+        scene.add(strip);
+
+        // Record slot positions along this tier (~one every 0.5 m).
+        const slotsAlong = Math.floor(segLength / 0.5);
+        for (let s = 0; s < slotsAlong; s++) {
+          const z = segCenterZ - halfLen + (s + 0.5) * (segLength / slotsAlong);
+          shelfSlots.push({
+            x: slabCenterX,
+            y: y + slabT / 2 + 0.005,
+            z,
+            rowIndex, side, level, segment: seg
+          });
+        }
+      }
+    }
+
+    // Collision: one AABB per segment, so the gaps are walk-throughable.
+    walls.push({
+      xMin: centerX - halfWidth - WALL_THICK / 2,
+      xMax: centerX + halfWidth + WALL_THICK / 2,
+      zMin: segCenterZ - halfLen - WALL_THICK / 2,
+      zMax: segCenterZ + halfLen + WALL_THICK / 2,
+      yMin: 0, yMax: SHELF_HEIGHT
+    });
+  }
+}
+
+const firstShelfX = -((NUM_SHELF_ROWS - 1) / 2) * SHELF_PITCH;
+for (let i = 0; i < NUM_SHELF_ROWS; i++) {
+  addShelfRow(firstShelfX + i * SHELF_PITCH, SHELF_CENTER_Z, SHELF_LENGTH, i);
+}
+
+// ============================================================
+// WALL-MOUNTED SHELVES — single-sided shelving against the east/west walls,
+// like the dairy / beverage cooler aisle along the side of a real store.
+// ============================================================
+function addWallShelf(centerX, z1, z2, openSign) {
+  // openSign = +1 if the open side faces +X, -1 if it faces -X.
+  // The back panel sits on the opposite side (against the wall).
+  const shelfMat = new THREE.MeshStandardMaterial({ color: 0xc4c0b0, roughness: 0.85 });
+  const backMat  = new THREE.MeshStandardMaterial({ color: 0x3a352e, roughness: 1.0 });
+  const width  = 0.7;
+  const slabT  = 0.06;
+  const length = Math.abs(z2 - z1);
+  const centerZ = (z1 + z2) / 2;
+
+  const back = new THREE.Mesh(
+    new THREE.BoxGeometry(0.05, SHELF_HEIGHT, length),
+    backMat
+  );
+  back.position.set(centerX - openSign * width / 2, SHELF_HEIGHT / 2, centerZ);
+  scene.add(back);
+
+  const topCap = new THREE.Mesh(
+    new THREE.BoxGeometry(width, slabT, length),
+    shelfMat
+  );
+  topCap.position.set(centerX, SHELF_HEIGHT, centerZ);
+  scene.add(topCap);
+
+  // Tiers (each slab spans the full depth of the unit).
+  for (let level = 0; level < SHELF_LEVELS; level++) {
+    const y = SHELF_LEVEL_HEIGHTS[level];
+    const slab = new THREE.Mesh(
+      new THREE.BoxGeometry(width, slabT, length),
+      shelfMat
+    );
+    slab.position.set(centerX, y, centerZ);
+    scene.add(slab);
+
+    const slotsAlong = Math.floor(length / 0.5);
+    for (let s = 0; s < slotsAlong; s++) {
+      const z = centerZ - length / 2 + (s + 0.5) * (length / slotsAlong);
+      shelfSlots.push({
+        x: centerX + openSign * (width / 4),
+        y: y + slabT / 2 + 0.005,
+        z,
+        rowIndex: -1, side: openSign > 0 ? 'east' : 'west',
+        level, segment: -1, perimeter: true
+      });
+    }
+  }
+
+  walls.push({
+    xMin: centerX - width / 2 - WALL_THICK / 2,
+    xMax: centerX + width / 2 + WALL_THICK / 2,
+    zMin: centerZ - length / 2 - WALL_THICK / 2,
+    zMax: centerZ + length / 2 + WALL_THICK / 2,
+    yMin: 0, yMax: SHELF_HEIGHT
+  });
+}
+
+// Three sections of wall shelf per side, leaving gaps the player can duck
+// into and showing the wall texture between them.
+const wallShelfRanges = [
+  { z1: -38, z2: -24 },
+  { z1: -20, z2:  -6 },
+  { z1:  -2, z2:  14 },
+];
+for (const r of wallShelfRanges) {
+  addWallShelf( hx - 0.5, r.z1, r.z2, -1); // east wall, opens westward
+  addWallShelf(-hx + 0.5, r.z1, r.z2, +1); // west wall, opens eastward
+}
+
+// ============================================================
+// TABLES — small display tables scattered around. Decorative for now;
+// they will eventually hold produce, seasonal items, etc.
+// ============================================================
+function addTable(x, z, w = 1.6, d = 1.0, h = 0.85) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 });
+  // Tabletop
+  const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), mat);
+  top.position.set(x, h, z);
+  scene.add(top);
+  // Four legs at the corners.
+  const legW = 0.07, inset = 0.08;
+  const legXY = [
+    [-w / 2 + inset, -d / 2 + inset],
+    [+w / 2 - inset, -d / 2 + inset],
+    [-w / 2 + inset, +d / 2 - inset],
+    [+w / 2 - inset, +d / 2 - inset],
+  ];
+  for (const [lx, lz] of legXY) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(legW, h, legW), mat);
+    leg.position.set(x + lx, h / 2, z + lz);
+    scene.add(leg);
+  }
+  walls.push({
+    xMin: x - w / 2 - WALL_THICK / 2,
+    xMax: x + w / 2 + WALL_THICK / 2,
+    zMin: z - d / 2 - WALL_THICK / 2,
+    zMax: z + d / 2 + WALL_THICK / 2,
+    yMin: 0, yMax: h
+  });
+}
+
+// Front-of-store display tables (entrance / produce area, south of registers).
+addTable(-15, 38, 1.8, 1.0);
+addTable( -7, 38, 1.8, 1.0);
+addTable(  7, 38, 1.8, 1.0);
+addTable( 15, 38, 1.8, 1.0);
+// Two more between the registers and the shelves.
+addTable(-10, 24, 1.8, 1.0);
+addTable( 10, 24, 1.8, 1.0);
+
+// Produce-island tables in the wide outer aisles (where the two outermost
+// shelf rows used to be). The clusters of two suggest pairs of bins.
+const outerTableZ = [-30, -16, -2, 12];
+for (const z of outerTableZ) {
+  addTable(-15, z, 1.8, 1.2);
+  addTable( 15, z, 1.8, 1.2);
+}
+
+// ============================================================
+// CHECKOUT AREA — decorative register counters (no checkout logic).
+// ============================================================
+function addRegister(centerX, centerZ) {
+  const counterMat = new THREE.MeshStandardMaterial({
+    color: 0x35588a, roughness: 0.7
+  });
+  const beltMat = new THREE.MeshStandardMaterial({
+    color: 0x111111, roughness: 0.9
+  });
+  const screenMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1a1a, roughness: 0.6, emissive: 0x0a2030
+  });
+
+  // Counter body
+  const counter = new THREE.Mesh(
+    new THREE.BoxGeometry(REGISTER_WIDTH, REGISTER_HEIGHT, REGISTER_LENGTH),
+    counterMat
+  );
+  counter.position.set(centerX, REGISTER_HEIGHT / 2, centerZ);
+  scene.add(counter);
+
+  // Conveyor belt strip on top
+  const belt = new THREE.Mesh(
+    new THREE.BoxGeometry(REGISTER_WIDTH * 0.6, 0.04, REGISTER_LENGTH * 0.85),
+    beltMat
+  );
+  belt.position.set(centerX, REGISTER_HEIGHT + 0.02, centerZ);
+  scene.add(belt);
+
+  // Register screen at the north end of the counter (faces the cashier).
+  const screen = new THREE.Mesh(
+    new THREE.BoxGeometry(0.4, 0.3, 0.25),
+    screenMat
+  );
+  screen.position.set(
+    centerX, REGISTER_HEIGHT + 0.18,
+    centerZ - REGISTER_LENGTH / 2 + 0.2
+  );
+  scene.add(screen);
+
+  // Collision: the counter is a low box you can't walk through.
+  walls.push({
+    xMin: centerX - REGISTER_WIDTH / 2 - WALL_THICK / 2,
+    xMax: centerX + REGISTER_WIDTH / 2 + WALL_THICK / 2,
+    zMin: centerZ - REGISTER_LENGTH / 2 - WALL_THICK / 2,
+    zMax: centerZ + REGISTER_LENGTH / 2 + WALL_THICK / 2,
+    yMin: 0, yMax: REGISTER_HEIGHT
+  });
+}
+
+const firstRegisterX = -((NUM_REGISTERS - 1) / 2) * REGISTER_SPACING;
+for (let i = 0; i < NUM_REGISTERS; i++) {
+  addRegister(firstRegisterX + i * REGISTER_SPACING, REGISTER_Z);
+}
+
+// ============================================================
+// MANNEQUINS — billboarded sprites that "quantum-lock" (only move when
+// the player isn't looking at them). Texture is a flat PNG so the user
+// can swap in any portrait image.
+// ============================================================
+
+// Procedural fallback: a simple humanoid silhouette drawn on a canvas.
+// Used when the PNG at MANNEQUIN_TEXTURE_URL doesn't exist or fails to load.
+function makeMannequinTexture(w = 256, h = 512) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  // Soft drop-shadow first.
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(w/2, h*0.97, w*0.22, h*0.02, 0, 0, Math.PI*2); ctx.fill();
+
+  ctx.fillStyle = '#a8a39a';
+  // Head
+  ctx.beginPath(); ctx.arc(w/2, h*0.13, w*0.13, 0, Math.PI*2); ctx.fill();
+  // Neck
+  ctx.fillRect(w/2 - w*0.055, h*0.21, w*0.11, h*0.045);
+  // Torso (tapered)
+  ctx.beginPath();
+  ctx.moveTo(w*0.32, h*0.25);
+  ctx.lineTo(w*0.68, h*0.25);
+  ctx.lineTo(w*0.62, h*0.58);
+  ctx.lineTo(w*0.38, h*0.58);
+  ctx.closePath(); ctx.fill();
+  // Arms hanging straight down
+  ctx.fillRect(w*0.22, h*0.27, w*0.08, h*0.32);
+  ctx.fillRect(w*0.70, h*0.27, w*0.08, h*0.32);
+  // Legs
+  ctx.fillRect(w*0.39, h*0.58, w*0.09, h*0.38);
+  ctx.fillRect(w*0.52, h*0.58, w*0.09, h*0.38);
+
+  // Subtle shading to give some volume.
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(w*0.5, h*0.25, w*0.18, h*0.33);  // right half of torso darker
+  ctx.fillRect(w*0.70, h*0.27, w*0.08, h*0.32); // right arm darker
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.minFilter = THREE.LinearFilter;
+  return tex;
+}
+
+// Default to procedural; the loader below will swap in the PNG if present.
+let mannequinTex = makeMannequinTexture();
+new THREE.TextureLoader().load(
+  MANNEQUIN_TEXTURE_URL,
+  (loadedTex) => {
+    loadedTex.minFilter = THREE.LinearFilter;
+    mannequinTex = loadedTex;
+    for (const m of mannequins) {
+      m.sprite.material.map = loadedTex;
+      m.sprite.material.needsUpdate = true;
+    }
+  },
+  undefined,
+  () => { /* keep procedural fallback on error */ }
+);
+
+const mannequins = []; // { sprite, spawnPos, state }
+
+function spawnMannequin(x, z) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: mannequinTex,
+    transparent: true,
+    fog: true,
+    depthWrite: false
+  }));
+  sprite.scale.set(MANNEQUIN_WIDTH, MANNEQUIN_HEIGHT, 1);
+  sprite.position.set(x, MANNEQUIN_HEIGHT / 2, z);
+  scene.add(sprite);
+  mannequins.push({
+    sprite,
+    spawnPos: new THREE.Vector3(x, MANNEQUIN_HEIGHT / 2, z),
+    state: 'idle'
+  });
+}
+
+// Pick NUM_MANNEQUINS random spawn points in the shelf area and well clear
+// of the entrance / checkout zone (z > 12). Rejection-samples against
+// `collides()` so we don't drop a mannequin inside a shelf or table.
+// Pre-defined aisle X-coordinates keep them on walkable lanes.
+const SPAWN_AISLE_X = [-15, -9, -4.5, 0, 4.5, 9, 15];
+const SPAWN_Z_MIN = -32;
+const SPAWN_Z_MAX = 10;
+const MANNEQUIN_MIN_SEPARATION = 5; // meters between any two mannequins
+
+function pickSpawnPos(existing) {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const x = SPAWN_AISLE_X[Math.floor(Math.random() * SPAWN_AISLE_X.length)];
+    const z = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
+    if (collides(x, z, MANNEQUIN_RADIUS, MANNEQUIN_HEIGHT)) continue;
+    let tooClose = false;
+    for (const e of existing) {
+      if (Math.hypot(e.x - x, e.z - z) < MANNEQUIN_MIN_SEPARATION) {
+        tooClose = true; break;
+      }
+    }
+    if (!tooClose) return { x, z };
+  }
+  return null;
+}
+
+const chosen = [];
+for (let i = 0; i < NUM_MANNEQUINS; i++) {
+  const p = pickSpawnPos(chosen);
+  if (!p) break;
+  chosen.push(p);
+  spawnMannequin(p.x, p.z);
+}
+
+// One of the mannequins is the "armed" one — its arm will eventually drop
+// when the player shoots it with the (not-yet-implemented) gun. For now we
+// just tint it red so the player can identify it.
+const redIndex = Math.floor(Math.random() * mannequins.length);
+const redMq = mannequins[redIndex];
+if (redMq) {
+  redMq.sprite.material.color = new THREE.Color(0xff5555);
+  redMq.isRed = true;  // flag for future arm-drop logic
+}
+
+// Debug handle so the test harness can read positions/state.
+window.__mannequins = mannequins;
+
+// ============================================================
+// PICKUPS — collectibles needed to open the exit door. Built as
+// THREE.Group meshes so each item can have multiple shapes (head + shaft
+// for a key, shaft + hook for a crowbar) and still be picked up as one.
+// ============================================================
+const ITEM_KEY     = { type: 'key',     name: 'Key',     icon: 'KEY' };
+const ITEM_CROWBAR = { type: 'crowbar', name: 'Crowbar', icon: 'CRO' };
+const ITEM_ARM     = { type: 'arm',     name: 'Arm',     icon: 'ARM' };
+
+// Classic skeleton-key shape: rounded bow on one end, shaft running out,
+// two teeth at the far end. Built lying flat on a surface.
+function makeKeyGroup() {
+  const g = new THREE.Group();
+  const gold = new THREE.MeshStandardMaterial({
+    color: 0xd9a838, roughness: 0.32, metalness: 0.85,
+    emissive: 0x4a3008, emissiveIntensity: 0.55
+  });
+  // Bow (round head): torus laid flat.
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 20), gold);
+  bow.rotation.x = Math.PI / 2;
+  bow.position.set(-0.08, 0, 0);
+  g.add(bow);
+  // Shaft.
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.018), gold);
+  shaft.position.set(0.03, 0, 0);
+  g.add(shaft);
+  // Two teeth on the far end (under the shaft).
+  const tooth1 = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.04, 0.018), gold);
+  tooth1.position.set(0.105, -0.022, 0);
+  g.add(tooth1);
+  const tooth2 = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.032, 0.018), gold);
+  tooth2.position.set(0.078, -0.018, 0);
+  g.add(tooth2);
+  return g;
+}
+
+// Crowbar: long shaft with a curved hook at one end.
+function makeCrowbarGroup() {
+  const g = new THREE.Group();
+  const steel = new THREE.MeshStandardMaterial({
+    color: 0x9c2a20, roughness: 0.45, metalness: 0.65,
+    emissive: 0x3a0808, emissiveIntensity: 0.45
+  });
+  // Main shaft (long thin bar).
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.028, 0.028), steel);
+  shaft.position.set(0, 0, 0);
+  g.add(shaft);
+  // Hook: torus quarter at one end suggests the curved claw.
+  const hookCurve = new THREE.Mesh(
+    new THREE.TorusGeometry(0.06, 0.025, 8, 12, Math.PI * 0.65),
+    steel
+  );
+  hookCurve.position.set(0.30, 0.04, 0);
+  hookCurve.rotation.z = -Math.PI / 2;
+  g.add(hookCurve);
+  // Small claw tip on the other end (just a stubby box).
+  const tip = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.04, 0.028), steel);
+  tip.position.set(-0.32, 0.005, 0);
+  g.add(tip);
+  return g;
+}
+
+// Arm pickup — fleshy cylinder for the red mannequin's dropped arm.
+function makeArmGroup() {
+  const g = new THREE.Group();
+  const flesh = new THREE.MeshStandardMaterial({
+    color: 0xc8866c, roughness: 0.7,
+    emissive: 0x3a1010, emissiveIntensity: 0.35
+  });
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.42, 10), flesh);
+  arm.rotation.z = Math.PI / 2;
+  g.add(arm);
+  // Hand: small sphere at one end.
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), flesh);
+  hand.position.set(0.23, 0, 0);
+  g.add(hand);
+  return g;
+}
+
+// spawnPickup takes a Group, places it, and tags every child mesh so a
+// raycast hit on any sub-mesh resolves back to the same root.
+function spawnPickup(item, group, x, y, z) {
+  group.position.set(x, y, z);
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.userData = { pickup: item, root: group };
+    }
+  });
+  scene.add(group);
+  interactables.push(group);
+  return group;
+}
+
+// Build a pool of valid surface positions: each table top + each shelf slot.
+// Items will be randomly placed on these surfaces so they sit on real
+// geometry instead of floating in midair.
+const TABLE_TOP_Y = 0.85 + 0.04;
+const tableSpots = [
+  // Front-of-store display tables
+  [-15, 38], [-7, 38], [7, 38], [15, 38],
+  // Between registers and shelves
+  [-10, 24], [10, 24],
+  // Produce-island tables in the outer aisles
+  [-15, -30], [15, -30],
+  [-15, -16], [15, -16],
+  [-15,  -2], [15,  -2],
+  [-15,  12], [15,  12],
+];
+function buildPickupSurfacePool() {
+  const pool = [];
+  // Tables — center of each top.
+  for (const [x, z] of tableSpots) pool.push({ x, y: TABLE_TOP_Y, z });
+  // Shelf slots on the middle two tiers — most visible, waist/chest height.
+  for (const s of shelfSlots) {
+    if (s.level >= 1 && s.level <= 2) {
+      pool.push({ x: s.x, y: s.y + 0.04, z: s.z });
+    }
+  }
+  return pool;
+}
+const pickupSurfacePool = buildPickupSurfacePool();
+
+function pickRandomSurface(usedSpots) {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const spot = pickupSurfacePool[
+      Math.floor(Math.random() * pickupSurfacePool.length)
+    ];
+    let tooClose = false;
+    for (const u of usedSpots) {
+      if (Math.hypot(u.x - spot.x, u.z - spot.z) < 6) {
+        tooClose = true; break;
+      }
+    }
+    if (!tooClose) return spot;
+  }
+  return pickupSurfacePool[0];
+}
+
+// Place the key + crowbar on random surfaces. Arm does NOT spawn here —
+// it will drop from the red mannequin when the (future) gun kills it.
+const usedItemSpots = [];
+const keySpot     = pickRandomSurface(usedItemSpots); usedItemSpots.push(keySpot);
+const crowbarSpot = pickRandomSurface(usedItemSpots); usedItemSpots.push(crowbarSpot);
+spawnPickup(ITEM_KEY,     makeKeyGroup(),     keySpot.x,     keySpot.y,     keySpot.z);
+spawnPickup(ITEM_CROWBAR, makeCrowbarGroup(), crowbarSpot.x, crowbarSpot.y, crowbarSpot.z);
+
+// Exposed so future arm-drop logic can call it (when the gun is added):
+//   spawnPickup(ITEM_ARM, makeArmGroup(), x, 0.8, z);
+window.__spawnArmAt = (x, z) => spawnPickup(ITEM_ARM, makeArmGroup(), x, 0.8, z);
+
+// ---- LOS / "looking at" helpers ----
+// Returns the parametric distance along the ray to the first hit on an AABB,
+// or null if the ray misses. Slab method.
+function aabbRayDist(ox, oy, oz, dx, dy, dz, b) {
+  let tmin = -Infinity, tmax = Infinity;
+  for (const ax of ['x', 'y', 'z']) {
+    const o  = ax === 'x' ? ox : ax === 'y' ? oy : oz;
+    const dr = ax === 'x' ? dx : ax === 'y' ? dy : dz;
+    const mn = ax === 'x' ? b.xMin : ax === 'y' ? b.yMin : b.zMin;
+    const mx = ax === 'x' ? b.xMax : ax === 'y' ? b.yMax : b.zMax;
+    if (Math.abs(dr) < 1e-8) {
+      if (o < mn || o > mx) return null;
+      continue;
+    }
+    let t1 = (mn - o) / dr;
+    let t2 = (mx - o) / dr;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return null;
+  }
+  return tmin >= 0 ? tmin : (tmax >= 0 ? 0 : null);
+}
+
+// Generic line-of-sight check: any wall AABB between the two points?
+function hasLineOfSight(fromX, fromY, fromZ, toX, toY, toZ) {
+  const dxw = toX - fromX, dyw = toY - fromY, dzw = toZ - fromZ;
+  const dist = Math.hypot(dxw, dyw, dzw);
+  if (dist < 0.001) return true;
+  const inv = 1 / dist;
+  const dx = dxw * inv, dy = dyw * inv, dz = dzw * inv;
+  for (const w of walls) {
+    const t = aabbRayDist(fromX, fromY, fromZ, dx, dy, dz, w);
+    if (t !== null && t < dist - 0.05) return false;
+  }
+  return true;
+}
+
+const _ndc = new THREE.Vector3();
+function isLookedAt(target) {
+  // On-screen (NDC) AND unoccluded line of sight from camera to target.
+  _ndc.copy(target).project(camera);
+  if (_ndc.x <= -1 || _ndc.x >= 1 || _ndc.y <= -1 || _ndc.y >= 1 ||
+      _ndc.z <=  0 || _ndc.z >= 1) return false;
+  return hasLineOfSight(
+    camera.position.x, camera.position.y, camera.position.z,
+    target.x, target.y, target.z
+  );
+}
+
+function mannequinSeesPlayer(m) {
+  // Mannequin's eye-level LOS to the player. Always uses player Y so the
+  // player's standing position is what's tested, not the mannequin's mid-body.
+  return hasLineOfSight(
+    m.sprite.position.x, m.sprite.position.y, m.sprite.position.z,
+    camera.position.x,   camera.position.y,   camera.position.z
+  );
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
+const controls = new PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
+window.__controls = controls; // debug exposure
+window.__THREE = THREE;        // expose Three.js for debug raycasts
+
+const overlay = document.getElementById('overlay');
+overlay.addEventListener('click', () => controls.lock());
+controls.addEventListener('lock',   () => overlay.style.display = 'none');
+controls.addEventListener('unlock', () => overlay.style.display = 'flex');
+
+const keys = { w: false, a: false, s: false, d: false, shift: false };
+document.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k in keys) keys[k] = true;
+});
+document.addEventListener('keyup', (e) => {
+  const k = e.key.toLowerCase();
+  if (k in keys) keys[k] = false;
+});
+
+// Sprint stamina (seconds remaining) and a walk-phase counter for head-bob.
+let sprintCharge = SPRINT_MAX;
+let walkPhase    = 0;
+
+// ---- Inventory ---------------------------------------------------------
+// 8 slots. Each slot is either null or { type, name, icon }. Press 1-8 to
+// pick the active slot. The flashlight's `visible` flag follows the active
+// slot so the cone only shines when the flashlight is "held".
+const INVENTORY_SLOTS = 8;
+const inventory = new Array(INVENTORY_SLOTS).fill(null);
+inventory[0] = { type: 'flashlight', name: 'Flashlight', icon: 'FL' };
+let selectedSlot = 0;
+
+function refreshHeldItem() {
+  const item = inventory[selectedSlot];
+  flashlight.visible = !!(item && item.type === 'flashlight');
+  updateHotbarUI && updateHotbarUI();  // defined after the UI is built
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key >= '1' && e.key <= '8') {
+    selectedSlot = parseInt(e.key, 10) - 1;
+    refreshHeldItem();
+  }
+});
+
+// Debug exposure for the test harness.
+window.__inventory = inventory;
+window.__getSlot = () => selectedSlot;
+
+// ---- Hotbar DOM ----
+// Build 8 slot divs once. updateHotbarUI rewrites the selected class +
+// item labels whenever the active slot or inventory contents change.
+const hotbarEl = document.getElementById('hotbar');
+for (let i = 0; i < INVENTORY_SLOTS; i++) {
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  slot.innerHTML = `<span class="num">${i + 1}</span><span class="label"></span>`;
+  hotbarEl.appendChild(slot);
+}
+function updateHotbarUI() {
+  const slots = hotbarEl.children;
+  for (let i = 0; i < slots.length; i++) {
+    slots[i].classList.toggle('selected', i === selectedSlot);
+    const item = inventory[i];
+    slots[i].querySelector('.label').textContent = item ? item.icon : '';
+  }
+}
+updateHotbarUI();
+
+// ---- Click-to-interact -------------------------------------------------
+// Raycast forward from the camera. If the hit is a pickup, take it into
+// the first empty inventory slot. If the hit is a door blockage and the
+// player's held item matches it, remove every part of that blockage and
+// consume the item.
+const _raycaster = new THREE.Raycaster();
+const _screenCenter = new THREE.Vector2(0, 0);
+const MAX_INTERACT_DIST = 4.5;
+
+// Walks up the parent chain looking for a node with the interactable
+// userData (pickup or unlocks). Lets us hit a leaf mesh inside a Group
+// and still resolve to the right top-level interactable.
+function resolveInteractable(node) {
+  while (node) {
+    const ud = node.userData;
+    if (ud && (ud.pickup || ud.unlocks)) return node;
+    node = node.parent;
+  }
+  return null;
+}
+
+function castInteractableHit() {
+  camera.updateMatrixWorld();
+  _raycaster.setFromCamera(_screenCenter, camera);
+  // recursive: true — interactables may be Groups (like the key/crowbar).
+  const hits = _raycaster.intersectObjects(interactables, true);
+  for (const h of hits) {
+    if (h.distance > MAX_INTERACT_DIST) break;
+    const target = resolveInteractable(h.object);
+    if (target) return { target, distance: h.distance };
+  }
+  return null;
+}
+
+function onPlayerClick() {
+  if (!controls.isLocked || isGameOver) return;
+  const result = castInteractableHit();
+  if (!result) return;
+  const target = result.target;
+  const data = target.userData;
+
+  if (data.pickup) {
+    const emptyIdx = inventory.findIndex(s => s === null);
+    if (emptyIdx < 0) return; // bag full
+    inventory[emptyIdx] = data.pickup;
+    scene.remove(target);
+    const i = interactables.indexOf(target);
+    if (i >= 0) interactables.splice(i, 1);
+    refreshHeldItem();
+  } else if (data.unlocks) {
+    const sel = inventory[selectedSlot];
+    if (!sel || sel.type !== data.unlocks) return;
+    // Remove every interactable sharing this `unlocks` value (handles the
+    // multi-mesh cases: 3 boards, keypad base + screen).
+    for (let i = interactables.length - 1; i >= 0; i--) {
+      if (interactables[i].userData.unlocks === data.unlocks) {
+        scene.remove(interactables[i]);
+        interactables.splice(i, 1);
+      }
+    }
+    inventory[selectedSlot] = null;
+    refreshHeldItem();
+  }
+}
+document.addEventListener('mousedown', onPlayerClick);
+
+// Prompt: small text under the crosshair telling the player what they
+// can do with whatever they're currently looking at.
+const promptEl = document.getElementById('prompt');
+function updateInteractionPrompt() {
+  if (!controls.isLocked || isGameOver) {
+    promptEl.style.display = 'none';
+    return;
+  }
+  const result = castInteractableHit();
+  if (!result) {
+    promptEl.style.display = 'none';
+    return;
+  }
+  const data = result.target.userData;
+  let text = '';
+  let warn = false;
+  if (data.pickup) {
+    text = `[ Click ] Take ${data.pickup.name}`;
+  } else if (data.unlocks) {
+    const sel = inventory[selectedSlot];
+    const neededName = { crowbar: 'Crowbar', key: 'Key', arm: 'Arm' }[data.unlocks];
+    if (sel && sel.type === data.unlocks) {
+      text = `[ Click ] Use ${sel.name}`;
+    } else {
+      text = `Needs ${neededName}`;
+      warn = true;
+    }
+  }
+  if (!text) {
+    promptEl.style.display = 'none';
+    return;
+  }
+  promptEl.textContent = text;
+  promptEl.classList.toggle('warn', warn);
+  promptEl.style.display = 'block';
+}
+
+// Game-over state. While true: player + mannequins freeze, overlay shown.
+let isGameOver = false;
+const gameoverEl = document.getElementById('gameover');
+function triggerGameOver() {
+  if (isGameOver) return;
+  isGameOver = true;
+  if (controls.isLocked) controls.unlock();
+  gameoverEl.style.display = 'flex';
+}
+function retry() {
+  // Reset player to entrance, looking north.
+  camera.position.set(0, PLAYER_HEIGHT, STORE_D / 2 - 3);
+  camera.rotation.set(0, 0, 0);
+  sprintCharge = SPRINT_MAX;
+  walkPhase    = 0;
+  // Send each mannequin back to its spawn.
+  for (const m of mannequins) {
+    m.sprite.position.copy(m.spawnPos);
+    m.state = 'idle';
+  }
+  isGameOver = false;
+  gameoverEl.style.display = 'none';
+  // Show the click-to-lock overlay again so the player re-enters the game.
+  overlay.style.display = 'flex';
+}
+document.getElementById('retry').addEventListener('click', retry);
+
+// ============================================================
+// MOVEMENT + COLLISION
+// X and Z are tested separately so the player slides along walls
+// instead of stopping dead when grazing a shelf.
+// ============================================================
+function collides(x, z, r = PLAYER_RADIUS, h = PLAYER_HEIGHT) {
+  const pxMin = x - r, pxMax = x + r;
+  const pzMin = z - r, pzMax = z + r;
+  for (const w of walls) {
+    if (pxMax > w.xMin && pxMin < w.xMax &&
+        pzMax > w.zMin && pzMin < w.zMax &&
+        h > w.yMin && 0 < w.yMax) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const forward = new THREE.Vector3();
+const right   = new THREE.Vector3();
+const UP      = new THREE.Vector3(0, 1, 0);
+
+// Mannequin AI — quantum-locked enemies.
+// Per frame, each mannequin is in one of three states:
+//   frozen    : player is looking at it (don't move)
+//   chasing   : player not looking, mannequin has LOS → walk toward player
+//   returning : player not looking, mannequin has NO LOS → walk back to spawn
+function updateMannequins(dt) {
+  if (isGameOver) return;
+  for (const m of mannequins) {
+    // Catch check — close enough to the player kills them.
+    const cdx = camera.position.x - m.sprite.position.x;
+    const cdz = camera.position.z - m.sprite.position.z;
+    if (Math.hypot(cdx, cdz) < MANNEQUIN_CATCH_DIST) {
+      triggerGameOver();
+      return;
+    }
+
+    if (isLookedAt(m.sprite.position)) {
+      m.state = 'frozen';
+      continue;
+    }
+
+    let target;
+    if (mannequinSeesPlayer(m)) {
+      target = camera.position;
+      m.state = 'chasing';
+    } else {
+      target = m.spawnPos;
+      m.state = 'returning';
+    }
+
+    const dx = target.x - m.sprite.position.x;
+    const dz = target.z - m.sprite.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.3) {
+      if (m.state === 'returning') m.state = 'idle';
+      continue;
+    }
+
+    const stepX = (dx / dist) * MANNEQUIN_SPEED * dt;
+    const stepZ = (dz / dist) * MANNEQUIN_SPEED * dt;
+
+    // Same slide-along-walls trick the player uses.
+    if (!collides(m.sprite.position.x + stepX, m.sprite.position.z, MANNEQUIN_RADIUS, MANNEQUIN_HEIGHT)) {
+      m.sprite.position.x += stepX;
+    }
+    if (!collides(m.sprite.position.x, m.sprite.position.z + stepZ, MANNEQUIN_RADIUS, MANNEQUIN_HEIGHT)) {
+      m.sprite.position.z += stepZ;
+    }
+  }
+}
+
+function updatePlayer(dt) {
+  camera.getWorldDirection(forward);
+  forward.y = 0; forward.normalize();
+  right.crossVectors(forward, UP).normalize();
+
+  // D adds the right vector; A subtracts it.
+  let dx = 0, dz = 0;
+  if (keys.w) { dx += forward.x; dz += forward.z; }
+  if (keys.s) { dx -= forward.x; dz -= forward.z; }
+  if (keys.d) { dx += right.x;   dz += right.z;   }
+  if (keys.a) { dx -= right.x;   dz -= right.z;   }
+
+  const hasInput = (dx !== 0 || dz !== 0);
+  const sprinting = hasInput && keys.shift && sprintCharge > 0;
+
+  // Stamina: drain while sprinting, regen otherwise.
+  if (sprinting) sprintCharge = Math.max(0,        sprintCharge - dt * SPRINT_DRAIN);
+  else           sprintCharge = Math.min(SPRINT_MAX, sprintCharge + dt * SPRINT_REGEN);
+
+  if (hasInput) {
+    const len = Math.hypot(dx, dz);
+    const speed = sprinting ? SPRINT_SPEED : MOVE_SPEED;
+    dx = (dx / len) * speed * dt;
+    dz = (dz / len) * speed * dt;
+    if (!collides(camera.position.x + dx, camera.position.z)) camera.position.x += dx;
+    if (!collides(camera.position.x, camera.position.z + dz)) camera.position.z += dz;
+
+    // Head bob — sine-wave the camera height while moving. Faster +
+    // slightly bigger bob while sprinting so the run feels heavier.
+    walkPhase += dt * (sprinting ? SPRINT_BOB_FREQ : WALK_BOB_FREQ);
+    const amp = BOB_AMPLITUDE * (sprinting ? 1.4 : 1.0);
+    camera.position.y = PLAYER_HEIGHT + Math.sin(walkPhase) * amp;
+  } else {
+    // Ease the camera back to the standing height when stopped.
+    camera.position.y += (PLAYER_HEIGHT - camera.position.y) * Math.min(1, dt * 8);
+  }
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+const debugEl     = document.getElementById('debug');
+const sprintEl    = document.getElementById('sprint-meter');
+const sprintFillEl = document.getElementById('sprint-meter-fill');
+const clock = new THREE.Clock();
+// Simple FPS averaging — count frames over a 0.5 s window.
+let fpsFrames = 0, fpsAccumDt = 0, fpsValue = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (controls.isLocked && !isGameOver) updatePlayer(dt);
+  updateMannequins(dt);
+  updateInteractionPrompt();
+
+  // ----------------------------------------------------------
+  // HORROR HOOKS — uncomment when you're ready.
+  // ----------------------------------------------------------
+  // for (const l of ceilingLights) {
+  //   l.intensity = (Math.random() < 0.02)
+  //     ? Math.random() * CEILING_LIGHT_INTENSITY
+  //     : CEILING_LIGHT_INTENSITY;
+  // }
+  // scene.fog.color.set(0x110000); // tint the fog dark red
+  //
+  // shelfSlots is ready: iterate it and place item meshes at slot.{x,y,z}
+  // to fill the shelves with cereal boxes, cans, etc.
+
+  fpsFrames++; fpsAccumDt += dt;
+  if (fpsAccumDt >= 0.5) {
+    fpsValue = fpsFrames / fpsAccumDt;
+    fpsFrames = 0; fpsAccumDt = 0;
+  }
+
+  const p = camera.position;
+  debugEl.textContent =
+    `fps: ${fpsValue.toFixed(0)}  pos: x=${p.x.toFixed(1)} z=${p.z.toFixed(1)}  stamina: ${sprintCharge.toFixed(1)}s`;
+
+  // Sprint meter fill height + low-stamina red tint.
+  const pct = (sprintCharge / SPRINT_MAX) * 100;
+  sprintFillEl.style.height = `${pct}%`;
+  sprintEl.classList.toggle('low', sprintCharge < SPRINT_MAX * 0.25);
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
