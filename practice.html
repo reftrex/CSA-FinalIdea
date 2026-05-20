@@ -720,6 +720,11 @@ addWall(-hx, hz, hx, hz);
 // ============================================================
 const interactables = []; // anything the click-raycast cares about
 
+// Barricaded "Granny"-style exit door. Visual reskin only — collision still
+// lives on the south wall mesh. Interactables grouped by `unlocks`:
+//   crowbar → 2 boards + vertical bar
+//   key     → lock body + shackle + hasp backplate
+//   arm     → keypad base + screen + LED
 function buildExitDoor() {
   const doorX = 0;
   const doorZ = hz - 0.16;     // sits just inside the wall surface
@@ -732,6 +737,26 @@ function buildExitDoor() {
   door.position.set(doorX, doorH / 2, doorZ);
   door.userData = { kind: 'door' };
   scene.add(door);
+
+  // 4 recessed-look panels on the door face (2x2). Slightly darker color
+  // sells the inset; very thin depth so they sit just in front of the
+  // door face at doorZ - 0.045 (front of door is at doorZ - 0.04).
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0x3a261a, roughness: 0.95 });
+  const panelW = 0.7, panelH = 1.1, panelGapX = 0.10, panelGapY = 0.30;
+  for (const xs of [-1, +1]) {
+    for (const ys of [-1, +1]) {
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(panelW, panelH, 0.008),
+        panelMat
+      );
+      panel.position.set(
+        doorX + xs * (panelW / 2 + panelGapX / 2),
+        doorH / 2 + ys * (panelH / 2 + panelGapY / 2),
+        doorZ - 0.045
+      );
+      scene.add(panel);
+    }
+  }
 
   // Frame around the door.
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a1c10, roughness: 1 });
@@ -746,12 +771,12 @@ function buildExitDoor() {
     scene.add(stile);
   }
 
-  // BOARDS — 3 horizontal planks across the door, removable with a crowbar.
-  const boardMat = new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.92 });
-  for (let i = 0; i < 3; i++) {
-    const y = 0.55 + i * 0.75;
+  // BOARDS — 2 weathered grey planks nailed across the door. Crowbar removes
+  // both, plus the vertical bar below.
+  const boardMat = new THREE.MeshStandardMaterial({ color: 0x6a6258, roughness: 0.95 });
+  for (const y of [0.70, 1.85]) {
     const board = new THREE.Mesh(
-      new THREE.BoxGeometry(doorW + 0.2, 0.18, 0.06),
+      new THREE.BoxGeometry(doorW + 0.25, 0.22, 0.06),
       boardMat
     );
     board.position.set(doorX, y, doorZ - 0.08);
@@ -761,39 +786,122 @@ function buildExitDoor() {
     interactables.push(board);
   }
 
-  // LOCK — small metallic padlock on the right side of the door.
+  // VERTICAL BAR — thin metal rod, floor-to-top, in front of the boards.
+  // Joins the crowbar group (dies with the boards in one click).
+  const barMat = new THREE.MeshStandardMaterial({
+    color: 0x3a3a40, roughness: 0.4, metalness: 0.75
+  });
+  const bar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022, 0.022, 2.85, 10),
+    barMat
+  );
+  bar.position.set(doorX, 1.425, doorZ - 0.09);
+  bar.userData = { unlocks: 'crowbar', kind: 'bar' };
+  scene.add(bar);
+  interactables.push(bar);
+
+  // LOCK — padlock on the right side of the door, mid-height between boards.
   const lockMat = new THREE.MeshStandardMaterial({
     color: 0x4a4a4a, roughness: 0.4, metalness: 0.75
   });
+  const lockX = doorX + 0.65;
+  const lockY = 1.55;
   const lock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.1), lockMat);
-  lock.position.set(doorX + doorW / 2 - 0.18, 1.25, doorZ - 0.11);
+  lock.position.set(lockX, lockY, doorZ - 0.115);
   lock.userData = { unlocks: 'key', kind: 'lock' };
   scene.add(lock);
   interactables.push(lock);
-  // Shackle on top of the lock (decorative).
+  // Hasp backplate behind the lock body (the metal plate the lock hangs from).
+  const haspMat = new THREE.MeshStandardMaterial({
+    color: 0x5a5a5a, roughness: 0.5, metalness: 0.7
+  });
+  const hasp = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.25, 0.012), haspMat);
+  hasp.position.set(lockX, lockY, doorZ - 0.10);
+  hasp.userData = { unlocks: 'key', kind: 'hasp' };
+  scene.add(hasp);
+  interactables.push(hasp);
+  // Shackle on top of the lock — half-torus, tagged so it dies with the lock.
   const shackleMat = new THREE.MeshStandardMaterial({
     color: 0x808080, roughness: 0.3, metalness: 0.85
   });
   const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 8, 16, Math.PI), shackleMat);
-  shackle.position.set(lock.position.x, lock.position.y + 0.12, lock.position.z);
+  shackle.position.set(lockX, lockY + 0.12, doorZ - 0.115);
   shackle.rotation.x = Math.PI / 2;
+  shackle.userData = { unlocks: 'key', kind: 'shackle' };
   scene.add(shackle);
+  interactables.push(shackle);
 
-  // KEYPAD — fingerprint scanner on the wall next to the door, removed with arm.
+  // KEYPAD — small fingerprint scanner mounted on the door's right side,
+  // below the lock. Removed with the arm from the red mannequin.
   const padBaseMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 });
   const padScreenMat = new THREE.MeshStandardMaterial({
     color: 0x003322, roughness: 0.3, emissive: 0x115533, emissiveIntensity: 0.8
   });
-  const padBase = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.05), padBaseMat);
-  padBase.position.set(doorX + doorW / 2 + 0.4, 1.35, doorZ - 0.03);
+  const padX = doorX + 0.65;
+  const padY = 1.20;
+  const padBase = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.20, 0.04), padBaseMat);
+  padBase.position.set(padX, padY, doorZ - 0.10);
   padBase.userData = { unlocks: 'arm', kind: 'keypad' };
   scene.add(padBase);
   interactables.push(padBase);
-  const padScreen = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.02), padScreenMat);
-  padScreen.position.set(padBase.position.x, padBase.position.y + 0.04, padBase.position.z - 0.03);
+  const padScreen = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.012), padScreenMat);
+  padScreen.position.set(padX, padY + 0.02, padBase.position.z - 0.022);
   padScreen.userData = { unlocks: 'arm', kind: 'keypad' };
   scene.add(padScreen);
   interactables.push(padScreen);
+  // Small red status LED on the keypad.
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: 0x550000, emissive: 0xff2222, emissiveIntensity: 1.6, roughness: 0.4
+  });
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), ledMat);
+  led.position.set(padX + 0.05, padY + 0.06, padScreen.position.z - 0.006);
+  led.userData = { unlocks: 'arm', kind: 'led' };
+  scene.add(led);
+  interactables.push(led);
+
+  // HANGING LAMP — above the door, anchored to a wall bracket (NOT the ceiling
+  // at y=5.5, which would be a 2.6m cord-drop and look absurd). Emissive bulb
+  // only — no actual light source, for perf.
+  const cordMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.5, 6), cordMat);
+  cord.position.set(doorX, 3.42, hz - 0.10);
+  scene.add(cord);
+  const shadeMat = new THREE.MeshStandardMaterial({
+    color: 0xb8a47a, roughness: 0.7, emissive: 0x332211, emissiveIntensity: 0.4,
+    side: THREE.DoubleSide
+  });
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.18, 12), shadeMat);
+  shade.position.set(doorX, 3.06, hz - 0.10);
+  shade.rotation.x = Math.PI;   // open mouth faces down over the bulb
+  scene.add(shade);
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xfff2c0, emissive: 0xfff2c0, emissiveIntensity: 1.8, roughness: 0.3
+  });
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), bulbMat);
+  bulb.position.set(doorX, 2.94, hz - 0.10);
+  scene.add(bulb);
+
+  // DECORATIONS — handle, paper note, hanging rag. Purely visual.
+  const handleMat = new THREE.MeshStandardMaterial({
+    color: 0x6a6a6a, roughness: 0.4, metalness: 0.6
+  });
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.10, 0.06), handleMat);
+  handle.position.set(doorX + 0.78, 1.30, doorZ - 0.07);
+  scene.add(handle);
+
+  const noteMat = new THREE.MeshStandardMaterial({
+    color: 0xd8d0b8, roughness: 0.95, side: THREE.DoubleSide
+  });
+  const note = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.20), noteMat);
+  note.position.set(doorX - 0.50, 1.80, doorZ - 0.06);
+  note.rotation.z = 0.08;
+  scene.add(note);
+
+  const ragMat = new THREE.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 1.0 });
+  const rag = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.45, 0.01), ragMat);
+  rag.position.set(doorX - 0.20, 1.20, doorZ - 0.07);
+  rag.rotation.z = -0.12;
+  scene.add(rag);
 }
 buildExitDoor();
 

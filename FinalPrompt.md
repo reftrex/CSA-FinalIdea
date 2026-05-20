@@ -103,4 +103,63 @@ make it so the shelves are farther apart and theres some shelves that have falle
 ---
 
 - with username `reftrex` and  `sohan.nellaturu@gmail.com` as my git identity, initialize this as a git repository with a appropriate README.md and .gitignore files
+- Remember to commit and push after each chunk of work / feature is complete and verified
+- Let us enhance the game one feature at a time
+## Feature - manaquens to walk a little slower
+- I want the manaquens to walk a little slower than they do now
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+___
+
+/compact
+
+    ## Feature - Change Gate 
+
+    - I want to change the escape door to look like the image I attached
+
+    - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+    - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+    - use `agent-browser` as appropriate
+    - Have this plan reviewed by expert independent sub-agents and gather their feedback
+    - Incorporate the feedback from sub-agents into the plan
+    - Provide the plan for my review and seek my approval
+    - After implenetation and successful verification, commit and push
+
+___
+
+## Feature - small game changes
+
+- whenever I pick up the key or the crowbar
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+___
+
+
+## Feature - Separate Javascript and CSS
+
+- I would like to have the Javascript and CSS in separate files and then use them in the HTML
+- Make sure there is no change in the game logic or behavior due to this change
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+___
+
 
