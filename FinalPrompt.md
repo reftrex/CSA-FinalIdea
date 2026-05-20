@@ -132,25 +132,9 @@ ___
 
 ___
 
-## Feature - small game changes
+## Feature - safe zone
 
-- whenever I pick up the key or the crowbar
-
-- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
-- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
-- use `agent-browser` as appropriate
-- Have this plan reviewed by expert independent sub-agents and gather their feedback
-- Incorporate the feedback from sub-agents into the plan
-- Provide the plan for my review and seek my approval
-- After implenetation and successful verification, commit and push
-
-___
-
-
-## Feature - Separate Javascript and CSS
-
-- I would like to have the Javascript and CSS in separate files and then use them in the HTML
-- Make sure there is no change in the game logic or behavior due to this change
+- make there be a safe zone for the player where the manaquens can't cross. They shouldnt go passed where the checkout area is shown in the photo towards the door
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
 - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
@@ -161,5 +145,30 @@ ___
 - After implenetation and successful verification, commit and push
 
 ___
+
+## Feature - menu and instructions
+
+- before the player starts the game they should be shown a menu where where they can click start game and then be given instructions to play the game
+
+-the game name should be "Koos's CSA horror store" and should look scary with a black screen and the name of the game and under a play button
+
+-after clicking play it should go into a slide show with the follow
+
+-1. slide will show WASD movement keys, shift to sprint, and click to pickup or interact
+-2. the second slide will show a photo of the door, a photo of the key, and a photo of the red manaquen. The slide should say to find to key and the crowbar to unlock the door and then to finally kill the red manaquen with a gun(still haven't implemented). it should also tell the user they have to answer 10 CSA questions after unlocking either the lock or the board. if they get 3 or more wrong the lock or the board depending on which one they used should leave their investory, the board or lock should not be taken down, and the key or the crowbar should be randomly placed around the map to find again. if they get ANY 10 wrong for the 
+3. 
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+
+
+
+
 
 

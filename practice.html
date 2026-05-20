@@ -311,6 +311,11 @@ const REGISTER_LENGTH  = 3.5;
 const REGISTER_WIDTH   = 1.0;
 const REGISTER_HEIGHT  = 0.9;
 
+// Safe zone: mannequins won't chase the player past this z-line, and the
+// movement gate blocks them from crossing it. Sits 0.25m north of the
+// register row's north face — the registers themselves are the visible barrier.
+const SAFE_ZONE_Z = REGISTER_Z - REGISTER_LENGTH / 2 - 0.25;
+
 // Windows on the front (south) wall. Each entry is one window opening.
 // The bits of wall above and below the opening stay solid for collision.
 const WINDOW_Y_MIN = 1.0;
@@ -1461,10 +1466,15 @@ const tableSpots = [
 ];
 function buildPickupSurfacePool() {
   const pool = [];
-  // Tables — center of each top.
-  for (const [x, z] of tableSpots) pool.push({ x, y: TABLE_TOP_Y, z });
+  // Tables — center of each top. Skip anything in the safe zone so the
+  // key/crowbar can't trivially land south of the checkout line.
+  for (const [x, z] of tableSpots) {
+    if (z > SAFE_ZONE_Z) continue;
+    pool.push({ x, y: TABLE_TOP_Y, z });
+  }
   // Shelf slots on the middle two tiers — most visible, waist/chest height.
   for (const s of shelfSlots) {
+    if (s.z > SAFE_ZONE_Z) continue;
     if (s.level >= 1 && s.level <= 2) {
       pool.push({ x: s.x, y: s.y + 0.04, z: s.z });
     }
@@ -1807,7 +1817,10 @@ function updateMannequins(dt) {
     }
 
     let target;
-    if (mannequinSeesPlayer(m)) {
+    // Safe zone: if the player is south of the checkout line, mannequins
+    // give up the chase and return to spawn instead of pressing against
+    // the boundary. Keeps the AI legible (no sideways-sliding artifact).
+    if (mannequinSeesPlayer(m) && camera.position.z <= SAFE_ZONE_Z) {
       target = camera.position;
       m.state = 'chasing';
     } else {
@@ -1830,8 +1843,13 @@ function updateMannequins(dt) {
     if (!collides(m.sprite.position.x + stepX, m.sprite.position.z, MANNEQUIN_RADIUS, MANNEQUIN_HEIGHT)) {
       m.sprite.position.x += stepX;
     }
-    if (!collides(m.sprite.position.x, m.sprite.position.z + stepZ, MANNEQUIN_RADIUS, MANNEQUIN_HEIGHT)) {
-      m.sprite.position.z += stepZ;
+    // Movement gate (defense-in-depth): even if some other code put a
+    // mannequin south of the boundary, it can still move north freely —
+    // but never south past SAFE_ZONE_Z.
+    const newZ = m.sprite.position.z + stepZ;
+    const safeZoneBlocks = stepZ > 0 && newZ > SAFE_ZONE_Z;
+    if (!safeZoneBlocks && !collides(m.sprite.position.x, newZ, MANNEQUIN_RADIUS, MANNEQUIN_HEIGHT)) {
+      m.sprite.position.z = newZ;
     }
   }
 }
