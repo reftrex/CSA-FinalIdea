@@ -146,6 +146,41 @@ ___
 
 ___
 
+## Feature - gun implementation
+
+- create a gun the user uses to kill the red manaquen. 
+-the user spawns in with it and is given one ammo to start with
+-to kill the red manaquen it should be shot 3 times 
+-to get more bullets there should be a ammo box at the spawn point and everytime you click it you get a bullet
+-but in the future I will make it so you have to answer a multiple choice CSA question to get the bullet(Not implemented uet but be prepared to do it in the future)
+- scan online on how a gun should look like in the game
+-after killing the manaquen it will drop a keycard and forget about it dropping the arm I want to change that
+- analyze other games with a similar feature and take insparation
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+___
+
+## Feature - CSA questions implementation
+
+- generate 40 multiple choice questions for AP CSA based on MC questions in ap classroom
+- the game should 
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+___
+
 ## Feature - menu and instructions
 
 - before the player starts the game they should be shown a menu where where they can click start game and then be given instructions to play the game
@@ -155,8 +190,9 @@ ___
 -after clicking play it should go into a slide show with the follow
 
 -1. slide will show WASD movement keys, shift to sprint, and click to pickup or interact
--2. the second slide will show a photo of the door, a photo of the key, and a photo of the red manaquen. The slide should say to find to key and the crowbar to unlock the door and then to finally kill the red manaquen with a gun(still haven't implemented). it should also tell the user they have to answer 10 CSA questions after unlocking either the lock or the board. if they get 3 or more wrong the lock or the board depending on which one they used should leave their investory, the board or lock should not be taken down, and the key or the crowbar should be randomly placed around the map to find again. if they get ANY 10 wrong for the 
-3. 
+-2. the second slide will show a photo of the door, a photo of the key, and a photo of the red manaquen. The slide should say to find to key and the crowbar to unlock the door and then to finally kill the red manaquen with a gun(still haven't implemented). it should also tell the user they have to answer 10 CSA questions after unlocking either the lock or the board. if they get 3 or more wrong the lock or the board depending on which one they used should leave their investory, the board or lock should not be taken down, and the key or the crowbar should be randomly placed around the map to find again. if they get ANY 10 wrong for the keycard one. the whole game gets reset and the user has to start again
+3. the 3rd slide talks about the manaquens and how they work. it should show a photo of a manaquen and say that if you look at a manaquen it will stand still but if you look away it will come after you. It should also say that if you get killed by a manaquen you have to answer 4/5 CSA questions right and if you get all of them right the game progress won't reset but if you don't get 4/5 right then the whole game resets
+
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
 - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
