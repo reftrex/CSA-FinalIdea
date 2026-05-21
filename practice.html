@@ -1882,16 +1882,19 @@ function tryShoot() {
     if (!best || dist < best.dist) best = { m, dist };
   }
   if (!best) return;                       // missed (hit wall or empty space)
-  if (!best.m.isRed) return;               // bullet passes through; non-red mannequins are immortal
   best.m.hitCount = (best.m.hitCount || 0) + 1;
   hitFlash(best.m);
-  if (best.m.hitCount >= 3) {
+  // Red mannequin is the "boss" — 3 hits to kill, drops the keycard.
+  // Normal mannequins take 2 hits and die quietly (no drop).
+  const killThreshold = best.m.isRed ? 3 : 2;
+  if (best.m.hitCount >= killThreshold) {
     if (isGameOver) return;                // race: catch fired same frame
     const pos = best.m.sprite.position.clone();
+    const wasRed = best.m.isRed;
     scene.remove(best.m.sprite);
     const idx = mannequins.indexOf(best.m);
     if (idx >= 0) mannequins.splice(idx, 1);
-    window.__spawnKeycardAt(pos.x, pos.z);
+    if (wasRed) window.__spawnKeycardAt(pos.x, pos.z);
   }
 }
 
