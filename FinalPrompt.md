@@ -177,6 +177,7 @@ ___
 - for the keycard you have to answer 8 hard questions with none wrong and if you get any wrong you lose the keycard and the red manaquen spawns back and you have to go kill it again.
 - also if you die to one of the manaquens you will have 50 seconds to answer 3 easy questions and if you get them all right on time you spawn back with all of your progress saved. 
 -if you run out of time or you get one wrong then you have to restart the game 
+-the menu should look scary like a horror games
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
 - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
@@ -197,8 +198,10 @@ ___
 -after clicking play it should go into a slide show with the follow
 
 -1. slide will show WASD movement keys, shift to sprint, and click to pickup or interact
--2. the second slide will show a photo of the door, a photo of the key, and a photo of the red manaquen. The slide should say to find to key and the crowbar to unlock the door and then to finally kill the red manaquen with a gun(still haven't implemented). it should also tell the user they have to answer 10 CSA questions after unlocking either the lock or the board. if they get 3 or more wrong the lock or the board depending on which one they used should leave their investory, the board or lock should not be taken down, and the key or the crowbar should be randomly placed around the map to find again. if they get ANY 10 wrong for the keycard one. the whole game gets reset and the user has to start again
-3. the 3rd slide talks about the manaquens and how they work. it should show a photo of a manaquen and say that if you look at a manaquen it will stand still but if you look away it will come after you. It should also say that if you get killed by a manaquen you have to answer 4/5 CSA questions right and if you get all of them right the game progress won't reset but if you don't get 4/5 right then the whole game resets
+-2. the second slide will show a photo of the door, a photo of the key, and a photo of the red manaquen. The slide should say to find to key and the crowbar to unlock the door and then to finally kill the red manaquen with a gun. it should also tell the user they have to answer 10 CSA questions or 5 hard CSA after unlocking either the lock or the board. if they get the amount wrong the lock or the board depending on which one they used should leave their investory adn be placed again randomly on the map, the board or lock should not be taken down, and the key or the crowbar should be randomly placed around the map to find again. if they get ANY 10 wrong for the keycard one. the whole game gets reset and the user has to start again
+- 3. the 3rd slide talks about the manaquens and how they work. it should show a photo of a manaquen and say that if you look at a manaquen it will stand still but if you look away it will come after you. It should also say that if you get killed by a manaquen you have to answer 3 CSA questions in 50 seconds and if you get them all right you get to respawn with progress saved else the whole game will restart
+- 4. it will say you beat the game after killing the red manaquen and finishing the keycard, lock, and boards on the door.
+-then it should let you play
 
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
