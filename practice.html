@@ -480,6 +480,188 @@
     margin-top: 12px;
   }
   .quiz-restart:hover { background: rgba(180, 40, 40, 0.7); }
+
+  /* ====== START MENU + INSTRUCTIONS ====== */
+  /* Single CSS source of truth for hiding menu layers — toggled via classList.
+     Never mix with inline style.display on these elements. */
+  .hidden { display: none !important; }
+
+  /* Shared full-screen black canvas under both menu screens */
+  #start-menu, #instructions, #black-hold, #quick-restart {
+    position: fixed; inset: 0;
+    background: #000;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Special Elite', 'Menlo', monospace;
+    color: rgba(220, 215, 200, 0.85);
+    /* Grain overlay via SVG turbulence */
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='9'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.18 0'/></filter><rect width='200' height='200' filter='url(%23g)'/></svg>");
+  }
+
+  /* Title screen — deliberately still, deliberately undersized */
+  #start-menu .title {
+    /* Slightly off-center, slightly small. Stillness over effects. */
+    margin-top: -8vh;
+    margin-left: -3vw;
+    font-size: 42px;
+    letter-spacing: 4px;
+    color: rgba(220, 215, 200, 0.92);
+    text-align: center;
+    line-height: 1.25;
+    /* No animation. No glitch. */
+  }
+  #start-menu .subtitle {
+    margin-top: 24px;
+    font-size: 13px;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    opacity: 0.55;
+  }
+  /* Off-white "I'M READY" — flat, no border, slow underline draw on hover */
+  #start-menu .ready-btn,
+  #quick-restart .punch-btn {
+    margin-top: 56px;
+    background: transparent;
+    border: none;
+    color: rgba(240, 235, 220, 0.92);
+    font-family: inherit;
+    font-size: 22px;
+    letter-spacing: 6px;
+    cursor: pointer;
+    padding: 8px 4px;
+    position: relative;
+  }
+  #start-menu .ready-btn::after,
+  #quick-restart .punch-btn::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 1px;
+    background: rgba(240, 235, 220, 0.85);
+    transition: width 600ms ease-out;
+  }
+  #start-menu .ready-btn:hover::after,
+  #quick-restart .punch-btn:hover::after { width: 100%; }
+
+  /* Instruction slide deck */
+  #instructions .slide-frame {
+    width: min(720px, 86vw);
+    max-height: 78vh;
+    padding: 32px 36px;
+    border: 1px solid rgba(220, 215, 200, 0.18);
+    background: rgba(8, 10, 12, 0.6);
+    display: flex;
+    flex-direction: column;
+  }
+  #instructions .slide { display: none; }
+  #instructions .slide.active { display: block; }
+  #instructions .slide h2 {
+    margin: 0 0 18px;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: rgba(220, 215, 200, 0.92);
+    text-transform: uppercase;
+    border-bottom: 1px dashed rgba(220, 215, 200, 0.35);
+    padding-bottom: 10px;
+  }
+  #instructions .slide-body {
+    font-size: 15px;
+    line-height: 1.65;
+    color: rgba(210, 205, 190, 0.85);
+  }
+  #instructions .slide-body p { margin: 8px 0; }
+  #instructions .slide-body .rule {
+    background: rgba(140, 25, 25, 0.12);
+    border-left: 2px solid rgba(180, 40, 40, 0.6);
+    padding: 8px 12px;
+    margin: 10px 0;
+    font-size: 14px;
+  }
+  #instructions .slide-art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    margin: 14px 0 18px;
+    min-height: 110px;
+  }
+  #instructions .slide-art .art-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    opacity: 0.6;
+    text-align: center;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+  #instructions .slide-art .art-cell {
+    display: flex; flex-direction: column;
+    align-items: center;
+  }
+  /* On-screen keyboard keys for Slide 1 */
+  #instructions .kbd {
+    display: inline-block;
+    min-width: 24px;
+    padding: 4px 8px;
+    margin: 0 3px;
+    background: rgba(40, 40, 45, 0.85);
+    border: 1px solid rgba(220, 215, 200, 0.4);
+    border-radius: 3px;
+    font-family: 'Menlo', monospace;
+    font-size: 14px;
+    color: rgba(240, 235, 220, 0.95);
+    text-align: center;
+  }
+
+  #instructions .slide-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 22px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(220, 215, 200, 0.25);
+  }
+  #instructions .slide-nav button {
+    background: transparent;
+    border: 1px solid rgba(220, 215, 200, 0.35);
+    color: rgba(220, 215, 200, 0.85);
+    font-family: inherit;
+    font-size: 13px;
+    letter-spacing: 3px;
+    padding: 8px 18px;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  #instructions .slide-nav button:disabled { opacity: 0.2; cursor: default; }
+  #instructions .slide-nav button:hover:not(:disabled) {
+    background: rgba(220, 215, 200, 0.08);
+    border-color: rgba(220, 215, 200, 0.7);
+  }
+  #instructions .slide-nav #slide-next.begin-shift {
+    color: rgba(220, 60, 60, 0.95);
+    border-color: rgba(220, 60, 60, 0.7);
+  }
+  #instructions .slide-indicator {
+    font-size: 11px;
+    letter-spacing: 3px;
+    opacity: 0.55;
+  }
+
+  /* Begin Shift black-hold fade */
+  #black-hold {
+    z-index: 31;
+    opacity: 1;
+    transition: opacity 600ms ease-in;
+    background-image: none;  /* clean black */
+    background: rgba(0, 0, 0, 1);
+  }
+  #black-hold.fading { opacity: 0; }
 </style>
 
 <!--
@@ -497,7 +679,141 @@
 </head>
 <body>
 
-<div id="overlay">
+<!-- Pre-game start menu: full title screen on first boot. -->
+<div id="start-menu">
+  <div class="title">Koos's CSA Horror Store</div>
+  <div class="subtitle">A late shift you may not survive</div>
+  <button id="start-ready" class="ready-btn">I'M READY</button>
+</div>
+
+<!-- Quick-restart screen: shown after a death-revival fail reload if the player
+     has already seen the slides this session. Single button, immediate lock. -->
+<div id="quick-restart" class="hidden">
+  <div class="title" style="font-size: 28px; letter-spacing: 6px; opacity: 0.7;">YOU LEFT.</div>
+  <div class="subtitle" style="margin-top: 14px;">Late shift requires you back.</div>
+  <button id="quick-punch" class="punch-btn">PUNCH IN</button>
+</div>
+
+<!-- 4-slide instruction carousel -->
+<div id="instructions" class="hidden">
+  <div class="slide-frame">
+    <div class="slide active" data-slide="0">
+      <h2>Controls</h2>
+      <div class="slide-art">
+        <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span>
+        <span style="opacity: 0.5;">·</span>
+        <span class="kbd">Shift</span>
+        <span style="opacity: 0.5;">·</span>
+        <span class="kbd">Click</span>
+      </div>
+      <div class="slide-body">
+        <p>Move with <strong>WASD</strong>. Hold <strong>Shift</strong> to sprint.</p>
+        <p>Left-click on whatever your crosshair is on to pick it up or use it.</p>
+        <p class="rule">Stamina runs out. Don't sprint from everything.</p>
+      </div>
+    </div>
+
+    <div class="slide" data-slide="1">
+      <h2>The Exit</h2>
+      <div class="slide-art">
+        <div class="art-cell">
+          <svg viewBox="0 0 80 100" width="64" height="80">
+            <rect x="10" y="0" width="60" height="100" fill="#3a2818" stroke="#1a1108" stroke-width="2"/>
+            <rect x="2" y="18" width="76" height="6" fill="#6b4a28" transform="rotate(-10 40 21)"/>
+            <rect x="2" y="48" width="76" height="6" fill="#6b4a28" transform="rotate(7 40 51)"/>
+            <rect x="2" y="76" width="76" height="6" fill="#6b4a28" transform="rotate(-4 40 79)"/>
+            <circle cx="56" cy="55" r="2.5" fill="#888"/>
+          </svg>
+          <span class="art-label">Exit door</span>
+        </div>
+        <div class="art-cell">
+          <svg viewBox="0 0 80 30" width="80" height="32">
+            <circle cx="14" cy="15" r="9" fill="none" stroke="#bba" stroke-width="3"/>
+            <rect x="22" y="13" width="44" height="4" fill="#bba"/>
+            <rect x="58" y="13" width="3" height="9" fill="#bba"/>
+            <rect x="64" y="13" width="3" height="7" fill="#bba"/>
+          </svg>
+          <span class="art-label">Key</span>
+        </div>
+        <div class="art-cell">
+          <svg viewBox="0 0 100 30" width="80" height="28">
+            <rect x="6" y="13" width="68" height="3" fill="#cc3a3a" transform="rotate(-3 40 15)"/>
+            <path d="M 74 16 L 88 6 L 94 10 L 82 18 Z" fill="#cc3a3a" stroke="#5a1010" stroke-width="0.8"/>
+          </svg>
+          <span class="art-label">Crowbar</span>
+        </div>
+      </div>
+      <div class="slide-body">
+        <p>The door has <strong>three blockages</strong>: a padlock, wooden boards, and a fingerprint keypad.</p>
+        <p>Find the <strong>key</strong> to break the padlock. Find the <strong>crowbar</strong> to rip off the boards.</p>
+        <p class="rule">Each use opens a quiz: <strong>10 easy questions, 0 wrong</strong> — or <strong>5 hard, 1 wrong allowed</strong>. Fail and you lose the tool. It respawns somewhere else in the dark.</p>
+      </div>
+    </div>
+
+    <div class="slide" data-slide="2">
+      <h2>The Mannequins</h2>
+      <div class="slide-art">
+        <div class="art-cell">
+          <svg viewBox="0 0 60 120" width="48" height="96">
+            <ellipse cx="30" cy="20" rx="13" ry="15" fill="#ddd6c8"/>
+            <rect x="20" y="34" width="20" height="56" fill="#ddd6c8" rx="3"/>
+            <line x1="20" y1="42" x2="8" y2="62" stroke="#ddd6c8" stroke-width="6" stroke-linecap="round"/>
+            <line x1="40" y1="42" x2="52" y2="62" stroke="#ddd6c8" stroke-width="6" stroke-linecap="round"/>
+            <line x1="25" y1="89" x2="22" y2="118" stroke="#ddd6c8" stroke-width="7" stroke-linecap="round"/>
+            <line x1="35" y1="89" x2="38" y2="118" stroke="#ddd6c8" stroke-width="7" stroke-linecap="round"/>
+          </svg>
+          <span class="art-label">Mannequin</span>
+        </div>
+        <div class="art-cell">
+          <svg viewBox="0 0 60 120" width="48" height="96">
+            <ellipse cx="30" cy="20" rx="13" ry="15" fill="#cc4040"/>
+            <rect x="20" y="34" width="20" height="56" fill="#cc4040" rx="3"/>
+            <line x1="20" y1="42" x2="8" y2="62" stroke="#cc4040" stroke-width="6" stroke-linecap="round"/>
+            <line x1="40" y1="42" x2="52" y2="62" stroke="#cc4040" stroke-width="6" stroke-linecap="round"/>
+            <line x1="25" y1="89" x2="22" y2="118" stroke="#cc4040" stroke-width="7" stroke-linecap="round"/>
+            <line x1="35" y1="89" x2="38" y2="118" stroke="#cc4040" stroke-width="7" stroke-linecap="round"/>
+          </svg>
+          <span class="art-label">Red one</span>
+        </div>
+        <div class="art-cell">
+          <svg viewBox="0 0 100 50" width="80" height="40">
+            <rect x="18" y="18" width="42" height="14" fill="#2a2a2a"/>
+            <circle cx="22" cy="32" r="7" fill="#1a1a1a"/>
+            <rect x="60" y="20" width="22" height="6" fill="#3a3a3a"/>
+            <path d="M 22 32 L 18 46 L 28 46 L 25 34 Z" fill="#2a2a2a"/>
+          </svg>
+          <span class="art-label">Gun</span>
+        </div>
+      </div>
+      <div class="slide-body">
+        <p>Mannequins freeze while you look at them. Look away and they advance — faster than you walk, slower than you sprint.</p>
+        <p>The <strong>red one</strong> drops a <strong>keycard</strong> for the keypad when shot enough times with the gun.</p>
+        <p class="rule">Using the keycard: <strong>8 hard questions, 0 wrong</strong>. Any wrong answer and the red mannequin <em>respawns</em>. You'll have to kill it again.</p>
+      </div>
+    </div>
+
+    <div class="slide" data-slide="3">
+      <h2>Death</h2>
+      <div class="slide-body">
+        <p>If a mannequin catches you, the screen goes black. You have <strong>50 seconds</strong> to answer <strong>3 easy questions</strong>.</p>
+        <p>All three right — you wake up. All progress saved. Ammo, inventory, kills — everything.</p>
+        <p class="rule">One wrong answer or the clock runs out: the shift restarts. From the beginning.</p>
+        <p style="margin-top: 22px; opacity: 0.8;">You win by killing the red mannequin and clearing all three blockages on the exit door.</p>
+      </div>
+    </div>
+
+    <div class="slide-nav">
+      <button id="slide-back" disabled>← BACK</button>
+      <span class="slide-indicator">1 / 4</span>
+      <button id="slide-next">NEXT →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden full-screen black hold between BEGIN SHIFT and the game scene reveal. -->
+<div id="black-hold" class="hidden"></div>
+
+<div id="overlay" class="hidden">
   <h1>NIGHT SHIFT</h1>
   <p>You are working the late shift at the grocery store.</p>
   <p>Click anywhere to start</p>
@@ -1956,12 +2272,139 @@ overlay.addEventListener('click', () => controls.lock());
 controls.addEventListener('lock',   () => overlay.style.display = 'none');
 controls.addEventListener('unlock', () => overlay.style.display = 'flex');
 
+// ============================================================
+// START MENU + INSTRUCTIONS STATE MACHINE
+// ============================================================
+// State:
+//   isInMenu  — true while title/slides are visible, false once BEGIN SHIFT lands
+//   currentSlide — 0..3, the active instruction slide index
+//
+// Boot path:
+//   first ever boot         → #start-menu (full title + 4 slides)
+//   reload AFTER first run  → #quick-restart (single PUNCH IN button)
+//     (sessionStorage 'seenMenu' flag carries the "first run is done" signal.)
+//
+// World pausing: isInMenu is checked in updateMannequins / updatePlayer /
+// updateGunAnim / keydown / keyup / onPlayerClick / triggerGameOver — nothing
+// in the simulation advances while the menu is up.
+// ============================================================
+let isInMenu = true;
+let currentSlide = 0;
+
+const startMenuEl   = document.getElementById('start-menu');
+const quickRestartEl= document.getElementById('quick-restart');
+const instructionsEl= document.getElementById('instructions');
+const blackHoldEl   = document.getElementById('black-hold');
+const slideEls      = Array.from(instructionsEl.querySelectorAll('.slide'));
+const slideBackBtn  = document.getElementById('slide-back');
+const slideNextBtn  = document.getElementById('slide-next');
+const slideIndEl    = instructionsEl.querySelector('.slide-indicator');
+
+function showSlide(idx) {
+  if (idx < 0 || idx >= slideEls.length) return;
+  currentSlide = idx;
+  slideEls.forEach((el, i) => el.classList.toggle('active', i === idx));
+  slideBackBtn.disabled = idx === 0;
+  if (idx === slideEls.length - 1) {
+    slideNextBtn.textContent = 'BEGIN SHIFT';
+    slideNextBtn.classList.add('begin-shift');
+  } else {
+    slideNextBtn.textContent = 'NEXT →';
+    slideNextBtn.classList.remove('begin-shift');
+  }
+  slideIndEl.textContent = `${idx + 1} / ${slideEls.length}`;
+}
+
+// Synchronous handler — preserves the user-gesture chain for controls.lock().
+function beginShift() {
+  instructionsEl.classList.add('hidden');
+  blackHoldEl.classList.remove('hidden');
+  blackHoldEl.classList.remove('fading');
+  playSfx('distantClatter');
+  controls.lock();  // MUST be synchronous; no awaits between click and lock.
+  // 1.2s black hold while ambient hum cuts to silence and the world unfreezes.
+  setTimeout(() => {
+    if (controls.isLocked) {
+      blackHoldEl.classList.add('fading');
+      stopDrone('fluorHum');
+      setTimeout(() => { blackHoldEl.classList.add('hidden'); }, 650);
+      isInMenu = false;
+      sessionStorage.setItem('seenMenu', '1');
+    } else {
+      // Pointer-lock was rejected (Chrome focus quirk, etc.) — restore the menu.
+      blackHoldEl.classList.add('hidden');
+      instructionsEl.classList.remove('hidden');
+    }
+  }, 1200);
+}
+
+// Quick-restart path: same beginShift contract but no slides between.
+function quickPunchIn() {
+  quickRestartEl.classList.add('hidden');
+  blackHoldEl.classList.remove('hidden');
+  blackHoldEl.classList.remove('fading');
+  playSfx('distantClatter');
+  controls.lock();
+  setTimeout(() => {
+    if (controls.isLocked) {
+      blackHoldEl.classList.add('fading');
+      stopDrone('fluorHum');
+      setTimeout(() => { blackHoldEl.classList.add('hidden'); }, 650);
+      isInMenu = false;
+    } else {
+      blackHoldEl.classList.add('hidden');
+      quickRestartEl.classList.remove('hidden');
+    }
+  }, 1200);
+}
+
+document.getElementById('start-ready').addEventListener('click', () => {
+  startMenuEl.classList.add('hidden');
+  instructionsEl.classList.remove('hidden');
+  showSlide(0);
+});
+slideBackBtn.addEventListener('click', () => showSlide(currentSlide - 1));
+slideNextBtn.addEventListener('click', () => {
+  if (currentSlide < slideEls.length - 1) showSlide(currentSlide + 1);
+  else beginShift();
+});
+document.getElementById('quick-punch').addEventListener('click', quickPunchIn);
+
+// Branch: skip full menu if the player has already seen it this session.
+if (sessionStorage.getItem('seenMenu') === '1') {
+  startMenuEl.classList.add('hidden');
+  quickRestartEl.classList.remove('hidden');
+}
+// Defer drone start to after module init — SFX_DRONES / _activeDrones are
+// declared further down with `const`, so they're in TDZ during this synchronous
+// init pass. setTimeout(0) waits one tick, by which time everything is loaded.
+// Also: Web Audio needs a user gesture to fully run — calling now creates the
+// context in suspended state; the first click on a button will resume it.
+setTimeout(() => { try { startDrone('fluorHum'); } catch(e) {} }, 0);
+
+// Test handles for agent-browser E2E (menu state)
+window.__isInMenu   = () => isInMenu;
+window.__currentSlide = () => currentSlide;
+window.__gotoSlide  = (n) => showSlide(n);
+window.__skipMenu   = () => {
+  isInMenu = false;
+  startMenuEl.classList.add('hidden');
+  instructionsEl.classList.add('hidden');
+  quickRestartEl.classList.add('hidden');
+  blackHoldEl.classList.add('hidden');
+  stopDrone('fluorHum');
+  // Mimic the natural flow: leave overlay visible so click-to-lock works as before.
+  overlay.style.display = 'flex';
+};
+
 const keys = { w: false, a: false, s: false, d: false, shift: false };
 document.addEventListener('keydown', (e) => {
+  if (isInMenu) return;
   const k = e.key.toLowerCase();
   if (k in keys) keys[k] = true;
 });
 document.addEventListener('keyup', (e) => {
+  if (isInMenu) return;
   const k = e.key.toLowerCase();
   if (k in keys) keys[k] = false;
 });
@@ -2093,6 +2536,7 @@ function dryFire() {
   triggerRecoil(0.5);
 }
 function updateGunAnim(dt) {
+  if (isInMenu) return;
   if (muzzleTimer > 0) {
     muzzleTimer -= dt;
     if (muzzleTimer <= 0) muzzleFlash.visible = false;
@@ -2417,6 +2861,21 @@ const SFX_SYNTHS = {
     src.connect(bp); bp.connect(g); g.connect(ctx.destination);
     src.start(t0); src.stop(t0 + dur);
   },
+  // Distant clatter: one-shot for the BEGIN SHIFT black-hold. Far-off metal thud.
+  distantClatter(ctx, t0) {
+    const dur = 0.55;
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const env = Math.exp(-i / (ctx.sampleRate * 0.08));
+      data[i] = (Math.random() * 2 - 1) * env * 0.6;
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 900; bp.Q.value = 0.5;
+    const g = ctx.createGain(); g.gain.value = 0.10;
+    src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  },
   // Typewriter clack: a tiny click — short impulse with a slight resonant ring.
   typewriterClack(ctx, t0) {
     const dur = 0.06;
@@ -2451,6 +2910,25 @@ const SFX_DRONES = {
         g.gain.setValueAtTime(g.gain.value, t);
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
         osc.stop(t + 0.35); lfo.stop(t + 0.35);
+      },
+    };
+  },
+  // Fluorescent ballast hum — 50Hz buzz under the start menu. Cuts on pointer-lock.
+  fluorHum(ctx) {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 50;
+    const osc2 = ctx.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = 100;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 280; lp.Q.value = 1.2;
+    const g = ctx.createGain(); g.gain.value = 0.0001;
+    osc.connect(lp); osc2.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    osc.start(); osc2.start();
+    g.gain.exponentialRampToValueAtTime(0.04, ctx.currentTime + 1.2);
+    return {
+      stop() {
+        const t = ctx.currentTime;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(g.gain.value, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        osc.stop(t + 0.25); osc2.stop(t + 0.25);
       },
     };
   },
@@ -2748,7 +3226,7 @@ async function runQuiz({pool, count, allowedWrong, timeLimit}) {
 // ---- Ammo box click handler (rewritten to use the quiz system) ---------
 // Click the ammo box → choose difficulty → 1 question → award bullets on pass.
 async function handleAmmoBoxClick() {
-  if (quizBusy) return;
+  if (quizBusy || isInMenu) return;
   const diff = await showChoice([
     { label: 'EASY — 1 question for +1 bullet',  value: 'easy' },
     { label: 'HARD — 1 question for +3 bullets', value: 'hard' },
@@ -2865,7 +3343,7 @@ async function handleUnlockClick(usedSlot, unlocksType) {
 }
 
 function onPlayerClick() {
-  if (!controls.isLocked || isGameOver || quizBusy) return;
+  if (!controls.isLocked || isGameOver || quizBusy || isInMenu) return;
   const result = castInteractableHit();
   if (result) {
     const target = result.target;
@@ -2971,7 +3449,7 @@ function softRetry() {
 // to revive with all progress intact. Fail or time out → final game over,
 // with a RESTART button that hard-reloads the page.
 async function triggerGameOver() {
-  if (isGameOver || quizBusy) return;
+  if (isGameOver || quizBusy || isInMenu) return;
   isGameOver = true;
   if (controls.isLocked) controls.unlock();
   const r = await runQuiz({ pool: 'easy', count: 3, allowedWrong: 0, timeLimit: 50 });
@@ -3033,7 +3511,7 @@ const UP      = new THREE.Vector3(0, 1, 0);
 //   chasing   : player not looking, mannequin has LOS → walk toward player
 //   returning : player not looking, mannequin has NO LOS → walk back to spawn
 function updateMannequins(dt) {
-  if (isGameOver || isPaused) return;
+  if (isGameOver || isPaused || isInMenu) return;
   for (const m of mannequins) {
     // Catch check — close enough to the player kills them.
     const cdx = camera.position.x - m.sprite.position.x;
@@ -3087,6 +3565,7 @@ function updateMannequins(dt) {
 }
 
 function updatePlayer(dt) {
+  if (isInMenu) return;
   camera.getWorldDirection(forward);
   forward.y = 0; forward.normalize();
   right.crossVectors(forward, UP).normalize();
