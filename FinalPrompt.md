@@ -168,8 +168,15 @@ ___
 
 ## Feature - CSA questions implementation
 
-- generate 40 multiple choice questions for AP CSA based on MC questions in ap classroom
-- the game should 
+- generate 70 multiple choice questions(35 easy and 35 hard) for AP CSA based on MC questions in ap classroom(they should be on all of the units listed in AP classroom)
+- I want to make it so the game is to help future AP CSA students study while also playing the game
+-first I want to implement questions when getting ammo from the ammo box.
+-when clicking the get ammo button they can either pick easy question for one bullet or hard question for 3 bullets. after answering the question, if they got it right they should recieve the bullet/bullets
+- next I want to implement questions when unlocking the keyhole with the key and breaking the boards with the crowbar
+-they either have the choice to answer 10 easy questions or 5 hard questions but if you get one wrong on the easy questions you lose the respective tool(key or crowbar) and have to go and get it again and for hard its if you miss 2 questions
+- for the keycard you have to answer 8 hard questions with none wrong and if you get any wrong you lose the keycard and the red manaquen spawns back and you have to go kill it again.
+- also if you die to one of the manaquens you will have 50 seconds to answer 3 easy questions and if you get them all right on time you spawn back with all of your progress saved. 
+-if you run out of time or you get one wrong then you have to restart the game 
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
 - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan

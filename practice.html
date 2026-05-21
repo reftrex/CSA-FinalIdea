@@ -247,6 +247,113 @@
     background-color: rgba(10, 14, 18, 0.45);
   }
   #ammo.empty { color: rgba(220, 90, 90, 0.95); }
+  /* ====== QUIZ MODAL ====== */
+  /* Sits above the click-to-lock overlay so the "Click to start" prompt
+     never bleeds through. body.quiz-active also hides #overlay so its
+     unlock-trigger doesn't visually layer behind the quiz. */
+  #quiz-modal {
+    position: fixed; inset: 0;
+    background: rgba(6, 10, 14, 0.86);
+    z-index: 20;
+    display: none;
+    align-items: center; justify-content: center;
+    font-family: sans-serif;
+    color: rgba(240, 245, 250, 0.95);
+  }
+  #quiz-modal.visible { display: flex; }
+  body.quiz-active #overlay { display: none !important; }
+  body.quiz-active #gameover { display: none !important; }
+  .quiz-card {
+    max-width: 680px;
+    width: calc(100% - 64px);
+    background: rgba(14, 18, 24, 0.94);
+    border: 1px solid rgba(180, 200, 220, 0.35);
+    padding: 24px 28px;
+    box-shadow: 0 6px 32px rgba(0, 0, 0, 0.65);
+  }
+  .quiz-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    color: rgba(180, 200, 220, 0.75);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .quiz-header > span { padding: 0 4px; }
+  .quiz-unit { color: rgba(200, 220, 240, 0.85); }
+  .quiz-timer.urgent { color: rgba(230, 110, 110, 0.95); font-weight: bold; }
+  .quiz-question {
+    font-size: 16px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+  }
+  .quiz-code {
+    background: rgba(0, 0, 0, 0.5);
+    border-left: 3px solid rgba(180, 200, 220, 0.4);
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    color: rgba(220, 230, 240, 0.92);
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .quiz-code.hidden { display: none; }
+  .quiz-choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .quiz-choice {
+    background: rgba(40, 60, 80, 0.45);
+    border: 1px solid rgba(180, 200, 220, 0.35);
+    color: rgba(240, 245, 250, 0.95);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .quiz-choice:hover {
+    background: rgba(60, 90, 120, 0.65);
+    border-color: rgba(220, 230, 240, 0.7);
+  }
+  .quiz-choice.correct {
+    background: rgba(60, 140, 80, 0.55);
+    border-color: rgba(140, 220, 160, 0.9);
+  }
+  .quiz-choice.wrong {
+    background: rgba(160, 60, 60, 0.55);
+    border-color: rgba(220, 120, 120, 0.9);
+  }
+  .quiz-choice:disabled { cursor: default; }
+  .quiz-feedback {
+    text-align: center;
+    font-size: 14px;
+    letter-spacing: 1px;
+    padding: 6px;
+    min-height: 22px;
+  }
+  .quiz-feedback.correct { color: rgba(140, 220, 160, 0.95); }
+  .quiz-feedback.wrong { color: rgba(220, 120, 120, 0.95); }
+  .quiz-restart {
+    background: rgba(160, 60, 60, 0.5);
+    border: 1px solid rgba(220, 120, 120, 0.9);
+    color: rgba(240, 245, 250, 0.95);
+    padding: 12px 24px;
+    font-family: inherit;
+    font-size: 15px;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  .quiz-restart:hover { background: rgba(180, 70, 70, 0.7); }
 </style>
 
 <!--
@@ -282,12 +389,31 @@
 <div id="grain"></div>
 <div id="gameover">
   <h1>YOU DIED</h1>
-  <button id="retry">TRY AGAIN</button>
+  <button id="retry">RESTART</button>
 </div>
 <div id="hotbar"></div>
 <div id="crosshair"></div>
 <div id="prompt"></div>
 <div id="ammo">AMMO: 1</div>
+<div id="quiz-modal">
+  <div class="quiz-card">
+    <div class="quiz-header">
+      <span class="quiz-unit"></span>
+      <span class="quiz-progress"></span>
+      <span class="quiz-wrong"></span>
+      <span class="quiz-timer"></span>
+    </div>
+    <div class="quiz-question"></div>
+    <pre class="quiz-code hidden"><code></code></pre>
+    <div class="quiz-choices">
+      <button class="quiz-choice" data-idx="0"></button>
+      <button class="quiz-choice" data-idx="1"></button>
+      <button class="quiz-choice" data-idx="2"></button>
+      <button class="quiz-choice" data-idx="3"></button>
+    </div>
+    <div class="quiz-feedback"></div>
+  </div>
+</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -1894,40 +2020,580 @@ function tryShoot() {
     scene.remove(best.m.sprite);
     const idx = mannequins.indexOf(best.m);
     if (idx >= 0) mannequins.splice(idx, 1);
-    if (wasRed) window.__spawnKeycardAt(pos.x, pos.z);
+    if (wasRed) {
+      killedRed = best.m;                  // stashed for possible respawn on keycard fail
+      window.__spawnKeycardAt(pos.x, pos.z);
+    }
   }
 }
 
-// ---- Ammo box click handler --------------------------------------------
-/* CSA-question gate (future extension point).
- *   window.__ammoGate = null                       // default: instant +1 ammo
- *   window.__ammoGate = () => boolean              // sync: true = award
- *   window.__ammoGate = async () => boolean        // async: modal flow
- *
- * The async handler is responsible for:
- *   - calling controls.unlock() before showing the modal
- *   - calling controls.lock() after the player picks an answer
- *   - re-checking isGameOver before its promise resolves (we re-check too)
- *   - returning true for a correct answer, false otherwise
- *
- * Re-entrant clicks during an open modal are dropped via ammoGateBusy.
- */
-let ammoGateBusy = false;
 function addAmmo(n) { ammo += n; updateAmmoUI(); }
-function handleAmmoBoxClick() {
-  if (ammoGateBusy) return;
-  const gate = window.__ammoGate;
-  if (!gate) { addAmmo(1); return; }
-  ammoGateBusy = true;
-  Promise.resolve(gate()).then(ok => {
-    ammoGateBusy = false;
-    if (isGameOver) return;
-    if (ok) addAmmo(1);
-  }).catch(() => { ammoGateBusy = false; });
+
+// ============================================================
+// AP CSA QUESTION BANK — 35 easy + 35 hard, all 10 units.
+// Each entry: { unit, q, code?, choices[4], correct (0-3) }.
+// ============================================================
+const CSA_QUESTIONS = {
+  easy: [
+    // ---- Unit 1: Primitive Types ----
+    { unit: 'Unit 1', q: 'What is the value of `int x = 7 / 2;`?',
+      choices: ['3.5', '3', '4', '3.0'], correct: 1 },
+    { unit: 'Unit 1', q: 'Which is NOT a primitive type in Java?',
+      choices: ['int', 'double', 'String', 'boolean'], correct: 2 },
+    { unit: 'Unit 1', q: 'What is the result of `5 + 2 * 3`?',
+      choices: ['21', '11', '17', '30'], correct: 1 },
+    { unit: 'Unit 1', q: 'After `int x = (int)(3.9);`, what is x?',
+      choices: ['3', '4', '3.9', 'compile error'], correct: 0 },
+    // ---- Unit 2: Using Objects ----
+    { unit: 'Unit 2', q: 'Which Math method returns the absolute value?',
+      choices: ['Math.abs()', 'Math.absolute()', 'Math.val()', 'Math.positive()'], correct: 0 },
+    { unit: 'Unit 2', q: 'Given `String s = "Hello";`, what does s.length() return?',
+      choices: ['4', '5', '6', 'compile error'], correct: 1 },
+    { unit: 'Unit 2', q: 'What does `"abcdef".substring(1, 4)` return?',
+      choices: ['"abc"', '"bcd"', '"abcd"', '"bcde"'], correct: 1 },
+    { unit: 'Unit 2', q: 'Which method converts a String to lowercase?',
+      choices: ['String.lower()', 'toLower()', 'toLowerCase()', 'lowercase()'], correct: 2 },
+    // ---- Unit 3: Boolean / if ----
+    { unit: 'Unit 3', q: 'What does `(5 > 3) && (2 < 1)` evaluate to?',
+      choices: ['true', 'false', 'compile error', 'null'], correct: 1 },
+    { unit: 'Unit 3', q: 'Given `int x = 5;`, what does `x == 5` return?',
+      choices: ['"true"', 'true', '1', '5'], correct: 1 },
+    { unit: 'Unit 3', q: 'The else branch of an if-statement runs when…',
+      choices: ['the if condition is true', 'the if condition is false', 'always', 'never'], correct: 1 },
+    { unit: 'Unit 3', q: 'What is the value of `!(true || false)`?',
+      choices: ['true', 'false', 'null', 'compile error'], correct: 1 },
+    // ---- Unit 4: Iteration ----
+    { unit: 'Unit 4', q: 'How many times does the loop body run?',
+      code: 'for (int i = 0; i < 5; i++) {\n  System.out.println(i);\n}',
+      choices: ['4', '5', '6', '0'], correct: 1 },
+    { unit: 'Unit 4', q: 'What is the FIRST printed value?',
+      code: 'for (int i = 1; i <= 10; i++) System.out.print(i);',
+      choices: ['0', '1', '10', '11'], correct: 1 },
+    { unit: 'Unit 4', q: 'A `while (true)` with no break statement is…',
+      choices: ['a syntax error', 'skipped', 'an infinite loop', 'runs exactly once'], correct: 2 },
+    { unit: 'Unit 4', q: 'Which loop is BEST when the number of iterations is known up front?',
+      choices: ['for', 'while', 'do-while', 'if'], correct: 0 },
+    // ---- Unit 5: Writing Classes ----
+    { unit: 'Unit 5', q: 'What is the purpose of a constructor?',
+      choices: ['destroy objects', 'initialize a new object', 'print the object', 'compare two objects'], correct: 1 },
+    { unit: 'Unit 5', q: 'Which keyword refers to the current object?',
+      choices: ['self', 'me', 'this', 'super'], correct: 2 },
+    { unit: 'Unit 5', q: 'Which access modifier is MOST restrictive?',
+      choices: ['public', 'protected', 'private', '(package default)'], correct: 2 },
+    { unit: 'Unit 5', q: 'A `static` method belongs to…',
+      choices: ['one instance', 'the class itself', 'the main method', 'the JVM'], correct: 1 },
+    // ---- Unit 6: Array ----
+    { unit: 'Unit 6', q: 'What is the index of the FIRST element in a Java array?',
+      choices: ['-1', '0', '1', 'depends on declaration'], correct: 1 },
+    { unit: 'Unit 6', q: 'After `int[] a = new int[5];`, what is a[0]?',
+      choices: ['null', '0', 'undefined', 'compile error'], correct: 1 },
+    { unit: 'Unit 6', q: 'How do you get the number of elements in array `a`?',
+      choices: ['a.size()', 'a.length', 'a.length()', 'size(a)'], correct: 1 },
+    { unit: 'Unit 6', q: 'What does `int[] arr = {1, 2, 3};` create?',
+      choices: ['a compile error', 'a length-3 array initialized to 1,2,3', 'three separate arrays', 'an ArrayList'], correct: 1 },
+    // ---- Unit 7: ArrayList ----
+    { unit: 'Unit 7', q: 'What does `list.add(x)` do (no index)?',
+      choices: ['appends x to the end', 'removes x', 'replaces position 0', 'returns the sum'], correct: 0 },
+    { unit: 'Unit 7', q: 'What does `list.size()` return?',
+      choices: ['the array capacity', 'the number of elements', 'the largest index', '-1 if empty'], correct: 1 },
+    { unit: 'Unit 7', q: 'Which class do you import to use ArrayList?',
+      choices: ['java.util.List', 'java.util.ArrayList', 'java.collection.ArrayList', 'java.lang.ArrayList'], correct: 1 },
+    { unit: 'Unit 7', q: 'How do you get the element at index 2 of an ArrayList?',
+      choices: ['list[2]', 'list.at(2)', 'list.get(2)', 'list.element(2)'], correct: 2 },
+    // ---- Unit 8: 2D Array ----
+    { unit: 'Unit 8', q: 'How many rows does `int[][] m = new int[3][4];` have?',
+      choices: ['3', '4', '7', '12'], correct: 0 },
+    { unit: 'Unit 8', q: 'How do you access the first row, second column of `m`?',
+      choices: ['m(0,1)', 'm[0][1]', 'm[1][0]', 'm.get(0,1)'], correct: 1 },
+    { unit: 'Unit 8', q: 'For `int[][] m`, what does `m.length` return?',
+      choices: ['total number of cells', 'the number of rows', 'the number of columns', '0'], correct: 1 },
+    // ---- Unit 9: Inheritance ----
+    { unit: 'Unit 9', q: 'Which keyword calls the parent constructor?',
+      choices: ['parent', 'super', 'this', 'extends'], correct: 1 },
+    { unit: 'Unit 9', q: 'Which keyword establishes class inheritance?',
+      choices: ['inherits', 'extends', 'implements', 'parent'], correct: 1 },
+    { unit: 'Unit 9', q: 'If a subclass does NOT override a method…',
+      choices: ['it throws an error', 'it uses the superclass version', 'it returns null', 'it fails to compile'], correct: 1 },
+    // ---- Unit 10: Recursion ----
+    { unit: 'Unit 10', q: 'Every recursive method MUST have…',
+      choices: ['a return value', 'a base case', 'a loop', 'the static keyword'], correct: 1 },
+  ],
+  hard: [
+    // ---- Unit 1: Primitive Types ----
+    { unit: 'Unit 1', q: 'What is the value of x?',
+      code: 'double x = 7 / 2;',
+      choices: ['3', '3.5', '3.0', '4.0'], correct: 2 },
+    { unit: 'Unit 1', q: 'What is the value of x after this runs?',
+      code: 'int x = Integer.MAX_VALUE + 1;',
+      choices: ['Integer.MAX_VALUE', 'Integer.MIN_VALUE', '0', 'compile error'], correct: 1 },
+    // ---- Unit 2: Using Objects ----
+    { unit: 'Unit 2', q: 'After this code, what is `s`?',
+      code: 'String s = "abc";\ns.toUpperCase();',
+      choices: ['"ABC"', '"abc"', 'null', 'compile error'], correct: 1 },
+    { unit: 'Unit 2', q: 'For two Strings, `s1 == s2` tests…',
+      choices: ['character-by-character equality', 'length equality', 'whether they refer to the same object', 'calls equals() automatically'], correct: 2 },
+    { unit: 'Unit 2', q: 'What is the value of a[0] after this runs?',
+      code: 'int[] a = {1, 2, 3};\nint[] b = a;\nb[0] = 9;',
+      choices: ['1', '9', '0', 'compile error'], correct: 1 },
+    // ---- Unit 3: Boolean / if ----
+    { unit: 'Unit 3', q: 'When x = 0, this condition is…',
+      code: 'if (x != 0 && 10 / x > 1) { ... }',
+      choices: ['a division-by-zero error', 'safe because of short-circuit evaluation', 'always true', 'always false'], correct: 1 },
+    { unit: 'Unit 3', q: '`!(a && b)` is equivalent to…',
+      choices: ['!a && !b', '!a || !b', 'a || b', 'a && b'], correct: 1 },
+    { unit: 'Unit 3', q: 'Given x = 5, what is printed?',
+      code: 'if (x > 0)\n  if (x > 10) System.out.print("A");\n  else System.out.print("B");',
+      choices: ['A', 'B', 'A and B', 'nothing'], correct: 1 },
+    // ---- Unit 4: Iteration ----
+    { unit: 'Unit 4', q: 'What is the final value of x?',
+      code: 'int x = 0;\nfor (int i = 0; i < 3; i++)\n  for (int j = i; j < 3; j++)\n    x++;',
+      choices: ['6', '9', '3', '0'], correct: 0 },
+    { unit: 'Unit 4', q: 'What does this print?',
+      code: 'int i = 0;\nwhile (i < 5) { System.out.print(i + " "); i++; }',
+      choices: ['0 1 2 3 4', '1 2 3 4 5', '0 1 2 3 4 5', '1 2 3 4'], correct: 0 },
+    { unit: 'Unit 4', q: 'How many numbers does this loop print?',
+      code: 'for (int i = 10; i > 0; i -= 2) System.out.println(i);',
+      choices: ['4', '5', '6', '10'], correct: 1 },
+    // ---- Unit 5: Writing Classes ----
+    { unit: 'Unit 5', q: 'A private instance variable can be accessed…',
+      choices: ['from any class in the program', 'only within its own class', 'only by direct subclasses', 'from anywhere via reflection'], correct: 1 },
+    { unit: 'Unit 5', q: 'What does this constructor do?',
+      code: 'public Dog() {\n  this("Rex");\n}',
+      choices: ['calls another Dog constructor (chaining)', 'recursively builds Dog forever', 'calls the parent constructor', 'compile error'], correct: 0 },
+    { unit: 'Unit 5', q: 'Encapsulation in Java means…',
+      choices: ['allowing inheritance', 'bundling state with methods and hiding internals via access modifiers', 'method overloading', 'runtime polymorphism'], correct: 1 },
+    { unit: 'Unit 5', q: 'A static variable…',
+      choices: ['has one copy per instance', 'has one copy per class, shared by all instances', 'cannot be modified after declaration', 'requires the `this` keyword'], correct: 1 },
+    // ---- Unit 6: Array ----
+    { unit: 'Unit 6', q: 'After this code, what is a[0]?',
+      code: 'int[] a = new int[5];\nfor (int v : a) v = 1;',
+      choices: ['1', '0', 'null', 'compile error'], correct: 1 },
+    { unit: 'Unit 6', q: 'What does this code cause?',
+      code: 'int[] a = new int[3];\na[3] = 5;',
+      choices: ['a compile error', 'a runtime ArrayIndexOutOfBoundsException', 'extends the array to length 4', 'nothing — sets a[3] to 5'], correct: 1 },
+    { unit: 'Unit 6', q: 'Which statement about `int[]` vs `ArrayList<Integer>` is TRUE?',
+      choices: ['int[] is resizable; ArrayList is fixed', 'ArrayList is fixed; int[] is resizable', 'int[] is fixed-size; ArrayList is resizable', 'they behave identically'], correct: 2 },
+    // ---- Unit 7: ArrayList ----
+    { unit: 'Unit 7', q: 'What does the list contain after this code?',
+      code: 'ArrayList<Integer> a = new ArrayList<>();\na.add(1);\na.add(2);\na.remove(0);',
+      choices: ['[1]', '[2]', '[1, 2]', '[]'], correct: 1 },
+    { unit: 'Unit 7', q: 'What is the BEHAVIOR of this loop?',
+      code: 'for (int i = 0; i < list.size(); i++) {\n  list.remove(0);\n}',
+      choices: ['removes every element', 'removes about half of the elements', 'an infinite loop', 'a runtime error'], correct: 1 },
+    { unit: 'Unit 7', q: 'In `int x = list.get(0);` where `list` is `ArrayList<Integer>`, the conversion is called…',
+      choices: ['autoboxing', 'unboxing', 'casting', 'overloading'], correct: 1 },
+    // ---- Unit 8: 2D Array ----
+    { unit: 'Unit 8', q: 'Is this code valid?',
+      code: 'int[][] m = new int[3][2];\nm[2][1] = 9;',
+      choices: ['yes — m[2][1] is the last cell', 'no — out of bounds', 'compile error', 'undefined behavior'], correct: 0 },
+    { unit: 'Unit 8', q: 'How many total int elements does `new int[4][6]` hold?',
+      choices: ['10', '24', '4', '6'], correct: 1 },
+    { unit: 'Unit 8', q: 'In a row-major traversal `m[r][c]`, the outer loop variable `r` represents the…',
+      choices: ['column index', 'row index', 'value at the cell', 'array length'], correct: 1 },
+    { unit: 'Unit 8', q: 'For `int[][] m`, `m[0].length` gives…',
+      choices: ['the number of rows', 'the total cell count', 'the number of columns in row 0', 'always 0'], correct: 2 },
+    // ---- Unit 9: Inheritance ----
+    { unit: 'Unit 9', q: 'Given `class Cat extends Animal`, a Cat IS-A…',
+      choices: ['only Animal', 'only Cat', 'both Animal AND Cat (and Object)', 'only Object'], correct: 2 },
+    { unit: 'Unit 9', q: 'Polymorphism (run-time) is BEST described as…',
+      choices: ['one method name, different forms via subclass dispatch', 'multiple constructors in the same class', 'method overloading by parameter list', 'static method binding'], correct: 0 },
+    { unit: 'Unit 9', q: 'Which speak() runs?',
+      code: 'Animal a = new Cat();\na.speak();',
+      choices: ['Animal.speak() (compile-time type)', "Cat.speak() (run-time type)", 'compile error', 'runtime error'], correct: 1 },
+    { unit: 'Unit 9', q: 'An abstract method…',
+      choices: ['has no method body in its declaration', 'must be static', 'cannot be overridden', 'must be private'], correct: 0 },
+    { unit: 'Unit 9', q: '`super.method()` calls…',
+      choices: ['the same class\'s version of method', "the immediate parent class's version of method", "Object's version of method", "an interface's default method"], correct: 1 },
+    // ---- Unit 10: Recursion ----
+    { unit: 'Unit 10', q: 'Calling a recursive method without a reachable base case causes…',
+      choices: ['an infinite loop that returns 0', 'a StackOverflowError', 'a compile error', 'the program to return -1'], correct: 1 },
+    { unit: 'Unit 10', q: 'What is f(3)?',
+      code: 'int f(int n) {\n  if (n == 0) return 0;\n  return n + f(n - 1);\n}',
+      choices: ['0', '6', '3', '10'], correct: 1 },
+    { unit: 'Unit 10', q: 'What is g(4)?',
+      code: 'int g(int n) {\n  if (n <= 1) return 1;\n  return n * g(n - 1);\n}',
+      choices: ['4', '10', '24', 'StackOverflowError'], correct: 2 },
+    { unit: 'Unit 10', q: 'What happens when h(0) is called?',
+      code: 'int h(int n) {\n  return h(n + 1);\n}',
+      choices: ['returns 0', 'StackOverflowError', 'returns -1', 'loops forever silently'], correct: 1 },
+    { unit: 'Unit 10', q: 'For simple counting tasks, recursion vs iteration — which is GENERALLY faster?',
+      choices: ['recursion (less code)', 'iteration (no call overhead)', 'they are identical', 'depends entirely on the JIT compiler'], correct: 1 },
+  ],
+};
+
+// Audit at module load — catches schema bugs before a player gets stuck.
+(function auditQuestions() {
+  const errs = [];
+  for (const pool of ['easy', 'hard']) {
+    const qs = CSA_QUESTIONS[pool];
+    if (!qs || qs.length !== 35) errs.push(`${pool}: expected 35 questions, got ${qs ? qs.length : 0}`);
+    const seen = new Set();
+    qs.forEach((q, i) => {
+      if (!q.q) errs.push(`${pool}[${i}]: missing q`);
+      if (!Array.isArray(q.choices) || q.choices.length !== 4) errs.push(`${pool}[${i}]: choices.length != 4`);
+      if (!(q.correct >= 0 && q.correct <= 3)) errs.push(`${pool}[${i}]: correct not in [0,3]`);
+      if (seen.has(q.q)) errs.push(`${pool}[${i}]: duplicate q`);
+      seen.add(q.q);
+    });
+  }
+  if (errs.length) console.error('CSA_QUESTIONS audit FAILED:', errs);
+  else console.log('CSA_QUESTIONS audit OK (35 easy + 35 hard)');
+})();
+
+// ============================================================
+// QUIZ MODAL + SESSION MANAGER
+// ============================================================
+// Gates progression on AP CSA multiple-choice questions. Modal is layered
+// above the click-to-lock #overlay (which gets hidden via body.quiz-active
+// so its unlock-trigger doesn't visually bleed through). The game world
+// freezes while a modal is open via the `isPaused` flag — updateMannequins
+// and updatePlayer both early-return on it.
+//
+// Two flags:
+//   isPaused  — modal is open, mannequins frozen, but isGameOver is false
+//   quizBusy  — click handler early-returns to block double-quiz-open
+//
+// Test handles for deterministic agent-browser E2E:
+//   window.__quizBusy            — read current quizBusy flag
+//   window.__quizIsPaused        — read current isPaused flag
+//   window.__forceQuizAnswer(i)  — programmatic click on choice index i
+// ============================================================
+let isPaused = false;
+let quizBusy = false;
+let quizEscIgnored = false;          // true during revival (timer-gated)
+// Stash for the red mannequin object when it dies, so the keycard-fail
+// path can resurrect it. Set in tryShoot before splice/remove; cleared
+// after respawn.
+let killedRed = null;
+
+const quizEl         = document.getElementById('quiz-modal');
+const quizUnitEl     = quizEl.querySelector('.quiz-unit');
+const quizProgressEl = quizEl.querySelector('.quiz-progress');
+const quizWrongEl    = quizEl.querySelector('.quiz-wrong');
+const quizTimerEl    = quizEl.querySelector('.quiz-timer');
+const quizQuestionEl = quizEl.querySelector('.quiz-question');
+const quizCodeWrapEl = quizEl.querySelector('.quiz-code');
+const quizCodeEl     = quizEl.querySelector('.quiz-code code');
+const quizChoiceEls  = Array.from(quizEl.querySelectorAll('.quiz-choice'));
+const quizFeedbackEl = quizEl.querySelector('.quiz-feedback');
+
+window.__quizBusy     = () => quizBusy;
+window.__quizIsPaused = () => isPaused;
+let _resolveAnswer = null;
+let _currentQuestion = null;        // {q, correct, choices} of the on-screen question, null between
+window.__forceQuizAnswer = (idx) => { if (_resolveAnswer) _resolveAnswer(idx); };
+window.__currentQuestion = () => _currentQuestion;
+window.__answerCorrectly = () => { if (_currentQuestion && _resolveAnswer) _resolveAnswer(_currentQuestion.correct); };
+window.__answerWrong = () => {
+  if (_currentQuestion && _resolveAnswer) {
+    const wrong = (_currentQuestion.correct + 1) % 4;
+    _resolveAnswer(wrong);
+  }
+};
+
+function _showModal() {
+  document.body.classList.add('quiz-active');
+  quizEl.classList.add('visible');
+}
+function _hideModal() {
+  quizEl.classList.remove('visible');
+  document.body.classList.remove('quiz-active');
+}
+function _resetChoices() {
+  for (const b of quizChoiceEls) {
+    b.classList.remove('correct', 'wrong');
+    b.disabled = false;
+    b.style.gridColumn = '';
+    b.style.display = '';
+  }
+  quizFeedbackEl.textContent = '';
+  quizFeedbackEl.classList.remove('correct', 'wrong');
+}
+function _shuffleCopy(arr) {
+  const copy = arr.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+// Waits for a click on a choice button OR an external __forceQuizAnswer.
+// Sentinel -1 = timeout, -2 = cancelled (Esc).
+function _waitForAnswer() {
+  return new Promise((resolve) => {
+    _resolveAnswer = (idx) => {
+      _resolveAnswer = null;
+      for (const b of quizChoiceEls) b.disabled = true;
+      resolve(idx);
+    };
+    for (const b of quizChoiceEls) {
+      const i = parseInt(b.dataset.idx, 10);
+      b.onclick = () => _resolveAnswer && _resolveAnswer(i);
+    }
+  });
+}
+
+// showChoice: present 2-4 option buttons; returns the value of the chosen
+// option, or null if cancelled (Esc).
+async function showChoice(options) {
+  isPaused = true;
+  quizBusy = true;
+  controls.unlock();
+  _showModal();
+  _resetChoices();
+  quizUnitEl.textContent = '';
+  quizProgressEl.textContent = '';
+  quizWrongEl.textContent = '';
+  quizTimerEl.textContent = '';
+  quizQuestionEl.textContent = 'Choose an option:';
+  quizCodeWrapEl.classList.add('hidden');
+  for (let i = 0; i < quizChoiceEls.length; i++) {
+    if (i < options.length) {
+      quizChoiceEls[i].textContent = options[i].label;
+      if (options.length === 2) quizChoiceEls[i].style.gridColumn = '1 / -1';
+    } else {
+      quizChoiceEls[i].style.display = 'none';
+    }
+  }
+  const escHandler = (e) => {
+    if (e.key === 'Escape' && _resolveAnswer) _resolveAnswer(-2);
+  };
+  document.addEventListener('keydown', escHandler);
+  const idx = await _waitForAnswer();
+  document.removeEventListener('keydown', escHandler);
+  _hideModal();
+  isPaused = false;
+  quizBusy = false;
+  if (idx < 0 || idx >= options.length) return null;
+  return options[idx].value;
+}
+
+// runQuiz: sequential N-question session with per-question feedback.
+//   pool: 'easy' | 'hard'
+//   count: number of questions
+//   allowedWrong: max wrong before fail
+//   timeLimit: optional seconds (whole session); times out → fail
+// Returns { passed, wrong, answered, timedOut, cancelled }.
+async function runQuiz({pool, count, allowedWrong, timeLimit}) {
+  isPaused = true;
+  quizBusy = true;
+  quizEscIgnored = !!timeLimit;
+  controls.unlock();
+  _showModal();
+  const picked = _shuffleCopy(CSA_QUESTIONS[pool] || []).slice(0, count);
+  let wrong = 0;
+  let answered = 0;
+  let timedOut = false;
+  let cancelled = false;
+
+  // Wallclock-based timer (not frame-based — survives tab throttling).
+  let endTime = null;
+  let timerHandle = null;
+  let timerPaused = false;
+  let pausedRemaining = 0;
+  const startTimer = () => {
+    if (!timeLimit) return;
+    endTime = performance.now() + timeLimit * 1000;
+    timerHandle = setInterval(() => {
+      if (timerPaused) return;
+      const rem = (endTime - performance.now()) / 1000;
+      quizTimerEl.textContent = `${Math.max(0, Math.ceil(rem))}s`;
+      quizTimerEl.classList.toggle('urgent', rem < 10);
+      if (rem <= 0) {
+        timedOut = true;
+        clearInterval(timerHandle); timerHandle = null;
+        if (_resolveAnswer) _resolveAnswer(-1);
+      }
+    }, 100);
+  };
+  startTimer();
+
+  const escHandler = (e) => {
+    if (e.key === 'Escape' && !quizEscIgnored && _resolveAnswer) _resolveAnswer(-2);
+  };
+  document.addEventListener('keydown', escHandler);
+
+  for (let i = 0; i < picked.length; i++) {
+    if (timedOut || cancelled) break;
+    _resetChoices();
+    quizProgressEl.textContent = `Q ${i + 1} / ${picked.length}`;
+    quizWrongEl.textContent = (allowedWrong > 0) ? `Wrongs: ${wrong} / ${allowedWrong}` : 'Wrongs allowed: 0';
+    const q = picked[i];
+    quizUnitEl.textContent = q.unit;
+    quizQuestionEl.textContent = q.q;
+    if (q.code) {
+      quizCodeEl.textContent = q.code;
+      quizCodeWrapEl.classList.remove('hidden');
+    } else {
+      quizCodeWrapEl.classList.add('hidden');
+    }
+    for (let j = 0; j < 4; j++) {
+      quizChoiceEls[j].textContent = `${String.fromCharCode(65 + j)}. ${q.choices[j]}`;
+    }
+    _currentQuestion = q;
+    const idx = await _waitForAnswer();
+    _currentQuestion = null;
+    if (idx === -1) { timedOut = true; break; }
+    if (idx === -2) { cancelled = true; break; }
+    answered++;
+    const isCorrect = idx === q.correct;
+    if (isCorrect) {
+      quizChoiceEls[idx].classList.add('correct');
+      quizFeedbackEl.textContent = 'Correct';
+      quizFeedbackEl.classList.add('correct');
+    } else {
+      wrong++;
+      quizChoiceEls[idx].classList.add('wrong');
+      quizChoiceEls[q.correct].classList.add('correct');
+      quizFeedbackEl.textContent = 'Wrong';
+      quizFeedbackEl.classList.add('wrong');
+    }
+    // Pause timer during the feedback delay so the player isn't penalized
+    // for the UI animation.
+    if (timerHandle) {
+      timerPaused = true;
+      pausedRemaining = (endTime - performance.now()) / 1000;
+    }
+    await new Promise(r => setTimeout(r, 600));
+    if (timerHandle && !timedOut) {
+      endTime = performance.now() + pausedRemaining * 1000;
+      timerPaused = false;
+    }
+    if (wrong > allowedWrong) break;
+  }
+
+  if (timerHandle) clearInterval(timerHandle);
+  document.removeEventListener('keydown', escHandler);
+  _hideModal();
+  isPaused = false;
+  quizBusy = false;
+  quizEscIgnored = false;
+
+  const passed = !cancelled && !timedOut && wrong <= allowedWrong && answered === picked.length;
+  return { passed, wrong, answered, timedOut, cancelled };
+}
+
+// ---- Ammo box click handler (rewritten to use the quiz system) ---------
+// Click the ammo box → choose difficulty → 1 question → award bullets on pass.
+async function handleAmmoBoxClick() {
+  if (quizBusy) return;
+  const diff = await showChoice([
+    { label: 'EASY — 1 question for +1 bullet',  value: 'easy' },
+    { label: 'HARD — 1 question for +3 bullets', value: 'hard' },
+    { label: 'CANCEL',                            value: null  },
+  ]);
+  if (!diff) return;
+  const r = await runQuiz({ pool: diff, count: 1, allowedWrong: 0 });
+  if (isGameOver) return;
+  if (r.passed) addAmmo(diff === 'easy' ? 1 : 3);
+}
+
+// Removes every interactable mesh with the matching `unlocks` value AND
+// clears the consumed item from the captured slot. Shared by the quiz-pass
+// path of every tool gate.
+function _consumeUnlock(unlocksType, usedSlot) {
+  for (let i = interactables.length - 1; i >= 0; i--) {
+    if (interactables[i].userData.unlocks === unlocksType) {
+      scene.remove(interactables[i]);
+      interactables.splice(i, 1);
+    }
+  }
+  inventory[usedSlot] = null;
+  refreshHeldItem();
+}
+
+// Predictable shelf/table spots where lost tools re-spawn. All in the
+// danger zone (z < SAFE_ZONE_Z) so the player has to traverse mannequin
+// territory to recover. The y is the table-top height set up earlier.
+const TOOL_RESPAWN_SPOTS = [
+  { x: -15, z: -30 },
+  { x:  15, z: -30 },
+  { x: -15, z:  12 },
+  { x:  15, z:  12 },
+];
+
+function respawnTool(type) {
+  const spot = TOOL_RESPAWN_SPOTS[Math.floor(Math.random() * TOOL_RESPAWN_SPOTS.length)];
+  const y = TABLE_TOP_Y;
+  if (type === 'crowbar') spawnPickup(ITEM_CROWBAR, makeCrowbarGroup(), spot.x, y, spot.z);
+  else if (type === 'key') spawnPickup(ITEM_KEY, makeKeyGroup(), spot.x, y, spot.z);
+}
+
+// Resurrects the red mannequin after a failed keycard quiz: re-builds the
+// sprite, pushes back into mannequins[], resets state. Also clears any
+// stale dropped keycard pickups from the world so the player can't just
+// pick the old one back up.
+function respawnRedMannequin() {
+  if (!killedRed) return;
+  // Drop any stale keycard pickups still on the floor. The pickup root is
+  // a Group; its userData.pickup is NOT set on the group itself, only on
+  // child meshes. Scan via traverse.
+  for (let i = interactables.length - 1; i >= 0; i--) {
+    let hasKeycard = false;
+    interactables[i].traverse(o => {
+      if (o.userData && o.userData.pickup && o.userData.pickup.type === 'keycard') hasKeycard = true;
+    });
+    if (hasKeycard) {
+      scene.remove(interactables[i]);
+      interactables.splice(i, 1);
+    }
+  }
+  // Re-create the sprite and re-arm the mannequin record. We keep the
+  // original mannequin object so spawnPos / isRed are preserved.
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: mannequinTex, transparent: true, fog: true, depthWrite: false
+  }));
+  sprite.material.color = new THREE.Color(0xff5555);  // red tint
+  sprite.scale.set(MANNEQUIN_WIDTH, MANNEQUIN_HEIGHT, 1);
+  sprite.position.copy(killedRed.spawnPos);
+  scene.add(sprite);
+  killedRed.sprite = sprite;
+  killedRed.state = 'idle';
+  killedRed.hitCount = 0;
+  delete killedRed._hitFlashOrig;
+  mannequins.push(killedRed);
+  window.__redMq = killedRed;
+  killedRed = null;
+}
+
+async function handleUnlockClick(usedSlot, unlocksType) {
+  if (quizBusy) return;
+  let choice;
+  if (unlocksType === 'keycard') {
+    // Keycard is the hardest gate — 8 hard questions, no wrong allowed.
+    // No difficulty picker (only one option).
+    choice = { pool: 'hard', count: 8, allowedWrong: 0 };
+  } else {
+    const picked = await showChoice([
+      { label: '10 easy questions — 0 wrong allowed', value: { pool: 'easy', count: 10, allowedWrong: 0 } },
+      { label: '5 hard questions — 1 wrong allowed',  value: { pool: 'hard', count: 5,  allowedWrong: 1 } },
+      { label: 'CANCEL', value: null },
+    ]);
+    if (!picked) return;
+    choice = picked;
+  }
+  const r = await runQuiz(choice);
+  if (isGameOver) return;
+  if (r.passed) {
+    _consumeUnlock(unlocksType, usedSlot);
+  } else if (r.cancelled) {
+    // No penalty on cancel (keycard quiz ignores Esc, so this only fires for
+    // crowbar/key paths).
+    return;
+  } else {
+    // Fail: lose the tool. Then apply the type-specific consequence.
+    inventory[usedSlot] = null;
+    refreshHeldItem();
+    if (unlocksType === 'crowbar' || unlocksType === 'key') {
+      respawnTool(unlocksType);
+    } else if (unlocksType === 'keycard') {
+      respawnRedMannequin();
+    }
+  }
 }
 
 function onPlayerClick() {
-  if (!controls.isLocked || isGameOver) return;
+  if (!controls.isLocked || isGameOver || quizBusy) return;
   const result = castInteractableHit();
   if (result) {
     const target = result.target;
@@ -1937,8 +2603,12 @@ function onPlayerClick() {
       const emptyIdx = inventory.findIndex(s => s === null);
       if (emptyIdx < 0) return; // bag full
       inventory[emptyIdx] = data.pickup;
-      scene.remove(target);
-      const i = interactables.indexOf(target);
+      // The raycast hit is a child mesh of a Group; remove the GROUP from
+      // the scene + interactables (otherwise the rest of the model lingers
+      // and the pickup can be re-clicked).
+      const root = data.root || target;
+      scene.remove(root);
+      const i = interactables.indexOf(root);
       if (i >= 0) interactables.splice(i, 1);
       refreshHeldItem();
       return;
@@ -1946,16 +2616,10 @@ function onPlayerClick() {
     if (data.unlocks) {
       const sel = inventory[selectedSlot];
       if (!sel || sel.type !== data.unlocks) return;
-      // Remove every interactable sharing this `unlocks` value (handles the
-      // multi-mesh cases: 2 boards + bar, lock + hasp + shackle, keypad + LED).
-      for (let i = interactables.length - 1; i >= 0; i--) {
-        if (interactables[i].userData.unlocks === data.unlocks) {
-          scene.remove(interactables[i]);
-          interactables.splice(i, 1);
-        }
-      }
-      inventory[selectedSlot] = null;
-      refreshHeldItem();
+      // Capture the slot + unlocks string at click time — player could
+      // switch slots mid-quiz; we want to consume the originally-selected
+      // tool, not whatever slot is active when the modal closes.
+      handleUnlockClick(selectedSlot, data.unlocks);
       return;
     }
   }
@@ -2006,21 +2670,19 @@ function updateInteractionPrompt() {
 // Game-over state. While true: player + mannequins freeze, overlay shown.
 let isGameOver = false;
 const gameoverEl = document.getElementById('gameover');
-function triggerGameOver() {
-  if (isGameOver) return;
-  isGameOver = true;
-  if (controls.isLocked) controls.unlock();
-  gameoverEl.style.display = 'flex';
-}
-function retry() {
-  // SOFT reset — death is a setback, not a full restart. We rewind spatial
-  // state (player + alive mannequin positions) and clear the game-over
-  // flag, but everything else PERSISTS:
-  //   - ammo                 — burned bullets stay burned, ammo box is refillable
-  //   - inventory            — picked-up keycard / key / crowbar stay in the bag
-  //   - m.hitCount           — shots on the red mannequin still count
-  //   - killed mannequins    — once dead, they stay dead (spliced from mannequins[])
-  //   - dropped keycard      — stays on the floor where the red mannequin fell
+
+// Restores player + mannequin spatial state without showing the gameover
+// overlay. Used by revival success path and by the (now-vestigial) retry
+// button if it's ever clicked from a soft state.
+//
+// SOFT reset — death is a setback, not a full restart. Spatial state is
+// rewound; everything else PERSISTS:
+//   - ammo                 — burned bullets stay burned, ammo box is refillable
+//   - inventory            — picked-up keycard / key / crowbar stay in the bag
+//   - m.hitCount           — shots on the red mannequin still count
+//   - killed mannequins    — once dead, they stay dead (spliced from mannequins[])
+//   - dropped keycard      — stays on the floor where the red mannequin fell
+function softRetry() {
   camera.position.set(0, PLAYER_HEIGHT, STORE_D / 2 - 3);
   camera.rotation.set(0, 0, 0);
   sprintCharge = SPRINT_MAX;
@@ -2031,10 +2693,31 @@ function retry() {
   }
   isGameOver = false;
   gameoverEl.style.display = 'none';
-  // Show the click-to-lock overlay again so the player re-enters the game.
-  overlay.style.display = 'flex';
 }
-document.getElementById('retry').addEventListener('click', retry);
+
+// Catch fires → revival mini-game. Pass 3 easy questions in 50 seconds
+// to revive with all progress intact. Fail or time out → final game over,
+// with a RESTART button that hard-reloads the page.
+async function triggerGameOver() {
+  if (isGameOver || quizBusy) return;
+  isGameOver = true;
+  if (controls.isLocked) controls.unlock();
+  const r = await runQuiz({ pool: 'easy', count: 3, allowedWrong: 0, timeLimit: 50 });
+  if (r.passed) {
+    softRetry();
+    overlay.style.display = 'flex';   // re-engage via click-to-lock
+  } else {
+    // Hard fail: show the gameover overlay with RESTART button.
+    gameoverEl.style.display = 'flex';
+  }
+}
+
+// The retry button now does a HARD restart (full reload) since soft-retry
+// happens automatically on revival success.
+document.getElementById('retry').addEventListener('click', () => location.reload());
+
+// Test handle: trigger revival programmatically for the agent-browser E2E.
+window.__triggerRevival = () => triggerGameOver();
 
 // ============================================================
 // MOVEMENT + COLLISION
@@ -2064,7 +2747,7 @@ const UP      = new THREE.Vector3(0, 1, 0);
 //   chasing   : player not looking, mannequin has LOS → walk toward player
 //   returning : player not looking, mannequin has NO LOS → walk back to spawn
 function updateMannequins(dt) {
-  if (isGameOver) return;
+  if (isGameOver || isPaused) return;
   for (const m of mannequins) {
     // Catch check — close enough to the player kills them.
     const cdx = camera.position.x - m.sprite.position.x;
