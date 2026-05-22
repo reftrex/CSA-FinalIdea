@@ -2297,7 +2297,15 @@ window.__THREE = THREE;        // expose Three.js for debug raycasts
 
 const overlay = document.getElementById('overlay');
 overlay.addEventListener('click', () => controls.lock());
-controls.addEventListener('lock',   () => overlay.style.display = 'none');
+controls.addEventListener('lock', () => {
+  overlay.style.display = 'none';
+  // The overlay starts with class="hidden" so the boot title screen can
+  // cover it. Once we've ever locked, the click-to-resume role takes over;
+  // clear the class so subsequent unlock events (quiz exit, Esc) can show
+  // the overlay via the handler below. Without this, `.hidden`'s !important
+  // beats the inline display:flex and the player gets stuck after a quiz.
+  overlay.classList.remove('hidden');
+});
 controls.addEventListener('unlock', () => overlay.style.display = 'flex');
 
 // ============================================================
@@ -2422,6 +2430,8 @@ window.__skipMenu   = () => {
   blackHoldEl.classList.add('hidden');
   stopDrone('fluorHum');
   // Mimic the natural flow: leave overlay visible so click-to-lock works as before.
+  // Must clear .hidden too (added at boot) or display:none !important wins.
+  overlay.classList.remove('hidden');
   overlay.style.display = 'flex';
 };
 
@@ -2889,39 +2899,57 @@ const SFX_SYNTHS = {
     src.connect(bp); bp.connect(g); g.connect(ctx.destination);
     src.start(t0); src.stop(t0 + dur);
   },
-  // Jumpscare screech: deliberately inhuman — multiple detuned high-pitched
-  // sawtooth oscillators with a downward sweep, layered with band-passed white
-  // noise around 3kHz. Master gain capped at 0.25 so it doesn't clip against
-  // the much-quieter ambient SFX (peak gains 0.10-0.18 elsewhere). The
-  // dissonance with the smiling photo is the actual scare; a human-vocal
-  // screech would read as a cliche.
+  // Jumpscare screech: tuned to sound like a human scream — fundamentals in
+  // vocal range (~600-700 Hz), three peaking formant filters at F1/F2/F3
+  // mimicking a strained throat, ~6 Hz vibrato, downward pitch bend for the
+  // "fading scream losing breath" tail. Light waveshaper distortion adds the
+  // rasp without dominating. Two detuned voices stacked for chorus. Noise
+  // rasp band-passed at 1.8 kHz adds the throat air. Master gain stays under
+  // 0.25 against the quieter ambient SFX.
   screech(ctx, t0) {
-    const dur = 1.5;
-    // 3 detuned sawtooths drifting from ~1100→700 Hz over the duration.
-    const baseFreqs = [1100, 1180, 1240];
-    const oscs = [], gains = [];
-    for (const f of baseFreqs) {
+    const dur = 1.8;
+    // Shared distortion curve (mild hard-knee waveshaper).
+    const distCurve = (() => {
+      const len = 1024, arr = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const x = (i / (len - 1)) * 2 - 1;
+        arr[i] = Math.sign(x) * Math.min(1, Math.abs(x) * 1.7);
+      }
+      return arr;
+    })();
+    for (const f of [620, 690]) {
       const osc = ctx.createOscillator(); osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(f, t0);
-      osc.frequency.linearRampToValueAtTime(f * 0.65, t0 + dur);
+      // Pitch envelope: hold then fade-down (a real scream loses breath at the end).
+      osc.frequency.linearRampToValueAtTime(f * 0.95, t0 + dur * 0.65);
+      osc.frequency.linearRampToValueAtTime(f * 0.55, t0 + dur);
+      // Vibrato (LFO) — ~6Hz with 18Hz depth, makes it feel vocal not synthetic.
+      const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 6.2;
+      const lfoGain = ctx.createGain(); lfoGain.gain.value = 18;
+      lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+      // Formant filters: F1, F2, F3 of a strained vocal tract.
+      const f1 = ctx.createBiquadFilter(); f1.type = 'peaking'; f1.frequency.value = 720;  f1.Q.value = 8;  f1.gain.value = 14;
+      const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = 1280; f2.Q.value = 8;  f2.gain.value = 11;
+      const f3 = ctx.createBiquadFilter(); f3.type = 'peaking'; f3.frequency.value = 2400; f3.Q.value = 6;  f3.gain.value = 6;
+      const dist = ctx.createWaveShaper(); dist.curve = distCurve;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.075, t0 + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.04);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(g); g.connect(ctx.destination);
+      osc.connect(f1); f1.connect(f2); f2.connect(f3); f3.connect(dist); dist.connect(g); g.connect(ctx.destination);
       osc.start(t0); osc.stop(t0 + dur);
-      oscs.push(osc); gains.push(g);
+      lfo.start(t0); lfo.stop(t0 + dur);
     }
-    // High-band noise on top — adds the rasp.
+    // Throat-air rasp: band-passed noise centered around the F2 region.
     const bufSize = Math.floor(ctx.sampleRate * dur);
     const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1);
     const noise = ctx.createBufferSource(); noise.buffer = buf;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 1.2;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 1.4;
     const ng = ctx.createGain();
     ng.gain.setValueAtTime(0.0001, t0);
-    ng.gain.exponentialRampToValueAtTime(0.10, t0 + 0.02);
+    ng.gain.exponentialRampToValueAtTime(0.06, t0 + 0.03);
     ng.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     noise.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
     noise.start(t0); noise.stop(t0 + dur);
