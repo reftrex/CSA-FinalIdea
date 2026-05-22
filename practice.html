@@ -1066,7 +1066,7 @@ const MANNEQUIN_CATCH_DIST = 0.95;
 // player will get a flashlight later. Slight cool tint everywhere.
 const AMBIENT_INTENSITY = 0.04;        // dropped — flashlight should matter
 const AMBIENT_COLOR     = 0xc8d4e0;    // cool fill light
-const CEILING_LIGHT_INTENSITY = 0.18;  // ceiling fluorescents barely on
+const CEILING_LIGHT_INTENSITY = 0.32;  // bumped after the count was cut in half
 const FOG_DENSITY = 0.06;              // a touch thicker
 const FOG_COLOR   = 0x04060c;        // very dark navy — used for fog + bg
 
@@ -1086,13 +1086,19 @@ camera.position.set(0, PLAYER_HEIGHT, STORE_D / 2 - 3);
 // the player for screenshots. Safe to leave in — it has no effect on play.
 window.__cam = camera; window.__scene = scene;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// antialias: false saves fillrate cost on HiDPI. The scene is dark + foggy
+// enough that the missing MSAA isn't visually obvious. Combined with the
+// devicePixelRatio cap below this is a substantial perf win on retina.
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Cap pixel ratio at 1.5 — on retina displays devicePixelRatio is 2 or 3,
 // which means rendering 4-9× as many pixels as needed for this style of
 // game. Capping cuts fillrate cost roughly in half on a MacBook Retina
 // with very little visible difference (the scene is already dark + foggy).
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// Cap at 1.0 — the per-fragment cost of 7+ dynamic lights through a HiDPI
+// (2x or 3x) framebuffer was the lag source. The dark/foggy aesthetic hides
+// the sharpness loss; the framerate gain is dramatic on retina.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.0));
 // Filmic tone mapping — squashes highlights and curves shadows so the
 // scene looks like a camera image rather than a flat 3D render.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1193,11 +1199,15 @@ function addCeilingLight(x, z, lit = true) {
   }
 }
 
-// 12 real PointLights in a 3×4 grid, wider spacing. Slightly punchier
-// per-light intensity so the overall scene brightness stays similar.
+// 12 ceiling positions but only 6 are actually lit — checkerboard pattern.
+// The per-fragment cost of PointLights on MeshStandardMaterial is the
+// dominant perf hit; cutting the dynamic-light count in half nearly doubles
+// framerate on HiDPI displays. Decorative bulb sprites still render at the
+// unlit positions so the ceiling doesn't look obviously gappy.
 for (let xi = -1; xi <= 1; xi++) {
   for (let zi = -1.5; zi <= 1.5; zi++) {
-    addCeilingLight(xi * 12, zi * 18, true);
+    const lit = ((xi + 1) + Math.round(zi + 1.5)) % 2 === 0;
+    addCeilingLight(xi * 12, zi * 18, lit);
   }
 }
 // Decorative bulbs in between — cheap (MeshBasicMaterial, no light source),
