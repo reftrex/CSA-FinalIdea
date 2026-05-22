@@ -189,7 +189,8 @@ ___
 
 ___
 
-## Feature - menu and instructions
+## menu
+
 
 - before the player starts the game they should be shown a menu where where they can click start game and then be given instructions to play the game
 
@@ -211,6 +212,21 @@ ___
 - Incorporate the feedback from sub-agents into the plan
 - Provide the plan for my review and seek my approval
 - After implenetation and successful verification, commit and push
+
+## Feature - jump scare
+
+- make it so whenever you die in the game you get jumpscared by this photo with a jumscare sound 
+-this should happen before you answer the questions and the photo should show for 2.5 seconds
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+___
 
 
 
