@@ -2911,59 +2911,120 @@ const SFX_SYNTHS = {
     src.connect(bp); bp.connect(g); g.connect(ctx.destination);
     src.start(t0); src.stop(t0 + dur);
   },
-  // Jumpscare screech: tuned to sound like a human scream — fundamentals in
-  // vocal range (~600-700 Hz), three peaking formant filters at F1/F2/F3
-  // mimicking a strained throat, ~6 Hz vibrato, downward pitch bend for the
-  // "fading scream losing breath" tail. Light waveshaper distortion adds the
-  // rasp without dominating. Two detuned voices stacked for chorus. Noise
-  // rasp band-passed at 1.8 kHz adds the throat air. Master gain stays under
-  // 0.25 against the quieter ambient SFX.
+  // Jumpscare screech — full horror-movie scream. Five layers stacked through
+  // a DynamicsCompressor (acts as a brick-wall limiter) and a generated
+  // convolver reverb so it sits in a huge dead space, not a tiny modal box:
+  //   1. Sub-bass growl (~55 Hz sine + saturation) — the chest punch
+  //   2. 4-voice vocal chorus (600-820 Hz sawtooths with strained-throat
+  //      formants, aggressive vibrato, downward pitch bend, mid-scream lurches)
+  //   3. High screech sweep (1600 → 2200 → 800 Hz sawtooth) — the wail on top
+  //   4. Throat-tear noise band-passed at 2 kHz — the rasp
+  //   5. Convolver reverb tail (generated IR, exponentially decaying noise)
+  //
+  // Master limiter at -3 dB threshold lets every layer push hard without
+  // crackle. 5 ms attack everywhere — sudden onset, no warning.
   screech(ctx, t0) {
     const dur = 1.8;
-    // Shared distortion curve (mild hard-knee waveshaper).
+    // Master limiter — brick-wall ceiling so the layered chorus can be loud
+    // without clipping the output.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.05;
+    limiter.connect(ctx.destination);
+
+    // Generated reverb (exponential noise IR) — gives the "huge dead space"
+    // cinemas use for jumpscares.
+    const reverbBuf = (() => {
+      const len = Math.floor(ctx.sampleRate * 1.6);
+      const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        for (let i = 0; i < len; i++) {
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+        }
+      }
+      return buf;
+    })();
+    const reverb = ctx.createConvolver(); reverb.buffer = reverbBuf;
+    const reverbGain = ctx.createGain(); reverbGain.gain.value = 0.45;
+    reverb.connect(reverbGain); reverbGain.connect(limiter);
+
+    // Hot tanh saturation curve.
     const distCurve = (() => {
-      const len = 1024, arr = new Float32Array(len);
+      const len = 2048, arr = new Float32Array(len);
       for (let i = 0; i < len; i++) {
         const x = (i / (len - 1)) * 2 - 1;
-        arr[i] = Math.sign(x) * Math.min(1, Math.abs(x) * 1.7);
+        arr[i] = Math.tanh(x * 4) * 0.92;
       }
       return arr;
     })();
-    for (const f of [620, 690]) {
+
+    // ---- Layer 1: Sub-bass growl ---------------------------------------
+    const subOsc = ctx.createOscillator(); subOsc.type = 'sine'; subOsc.frequency.value = 55;
+    const subDist = ctx.createWaveShaper(); subDist.curve = distCurve;
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.0001, t0);
+    subG.gain.exponentialRampToValueAtTime(0.14, t0 + 0.005);
+    subG.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    subOsc.connect(subDist); subDist.connect(subG); subG.connect(limiter);
+    subOsc.start(t0); subOsc.stop(t0 + dur);
+
+    // ---- Layer 2: 4-voice vocal chorus ---------------------------------
+    for (const f of [600, 680, 750, 820]) {
       const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+      // Pitch envelope: hold → mid-scream lurch → fading-breath tail.
       osc.frequency.setValueAtTime(f, t0);
-      // Pitch envelope: hold then fade-down (a real scream loses breath at the end).
-      osc.frequency.linearRampToValueAtTime(f * 0.95, t0 + dur * 0.65);
-      osc.frequency.linearRampToValueAtTime(f * 0.55, t0 + dur);
-      // Vibrato (LFO) — ~6Hz with 18Hz depth, makes it feel vocal not synthetic.
-      const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 6.2;
-      const lfoGain = ctx.createGain(); lfoGain.gain.value = 18;
+      osc.frequency.linearRampToValueAtTime(f * 0.92, t0 + dur * 0.4);
+      osc.frequency.setValueAtTime(f * 0.85 + Math.random() * 40, t0 + dur * 0.5);
+      osc.frequency.linearRampToValueAtTime(f * 0.5, t0 + dur);
+      // Aggressive vibrato — deeper and faster than the previous pass.
+      const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 7 + Math.random() * 3;
+      const lfoGain = ctx.createGain(); lfoGain.gain.value = 28;
       lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
-      // Formant filters: F1, F2, F3 of a strained vocal tract.
-      const f1 = ctx.createBiquadFilter(); f1.type = 'peaking'; f1.frequency.value = 720;  f1.Q.value = 8;  f1.gain.value = 14;
-      const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = 1280; f2.Q.value = 8;  f2.gain.value = 11;
-      const f3 = ctx.createBiquadFilter(); f3.type = 'peaking'; f3.frequency.value = 2400; f3.Q.value = 6;  f3.gain.value = 6;
+      const f1 = ctx.createBiquadFilter(); f1.type = 'peaking'; f1.frequency.value = 720;  f1.Q.value = 7; f1.gain.value = 14;
+      const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = 1280; f2.Q.value = 7; f2.gain.value = 11;
+      const f3 = ctx.createBiquadFilter(); f3.type = 'peaking'; f3.frequency.value = 2600; f3.Q.value = 5; f3.gain.value = 7;
       const dist = ctx.createWaveShaper(); dist.curve = distCurve;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.08, t0 + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.005);   // 5 ms attack — sudden
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(f1); f1.connect(f2); f2.connect(f3); f3.connect(dist); dist.connect(g); g.connect(ctx.destination);
+      osc.connect(f1); f1.connect(f2); f2.connect(f3); f3.connect(dist); dist.connect(g);
+      g.connect(limiter); g.connect(reverb);
       osc.start(t0); osc.stop(t0 + dur);
       lfo.start(t0); lfo.stop(t0 + dur);
     }
-    // Throat-air rasp: band-passed noise centered around the F2 region.
+
+    // ---- Layer 3: High screech sweep -----------------------------------
+    const hiOsc = ctx.createOscillator(); hiOsc.type = 'sawtooth';
+    hiOsc.frequency.setValueAtTime(1600, t0);
+    hiOsc.frequency.linearRampToValueAtTime(2200, t0 + dur * 0.3);
+    hiOsc.frequency.linearRampToValueAtTime(800, t0 + dur);
+    const hiDist = ctx.createWaveShaper(); hiDist.curve = distCurve;
+    const hiG = ctx.createGain();
+    hiG.gain.setValueAtTime(0.0001, t0);
+    hiG.gain.exponentialRampToValueAtTime(0.08, t0 + 0.005);
+    hiG.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    hiOsc.connect(hiDist); hiDist.connect(hiG);
+    hiG.connect(limiter); hiG.connect(reverb);
+    hiOsc.start(t0); hiOsc.stop(t0 + dur);
+
+    // ---- Layer 4: Throat-tear noise ------------------------------------
     const bufSize = Math.floor(ctx.sampleRate * dur);
     const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1);
     const noise = ctx.createBufferSource(); noise.buffer = buf;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 1.4;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2000; bp.Q.value = 0.8;
     const ng = ctx.createGain();
     ng.gain.setValueAtTime(0.0001, t0);
-    ng.gain.exponentialRampToValueAtTime(0.06, t0 + 0.03);
+    ng.gain.exponentialRampToValueAtTime(0.12, t0 + 0.005);
     ng.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    noise.connect(bp); bp.connect(ng); ng.connect(ctx.destination);
+    noise.connect(bp); bp.connect(ng);
+    ng.connect(limiter); ng.connect(reverb);
     noise.start(t0); noise.stop(t0 + dur);
   },
   // Distant clatter: one-shot for the BEGIN SHIFT black-hold. Far-off metal thud.
