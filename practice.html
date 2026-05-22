@@ -487,7 +487,7 @@
   .hidden { display: none !important; }
 
   /* Shared full-screen black canvas under both menu screens */
-  #start-menu, #instructions, #black-hold, #quick-restart {
+  #start-menu, #instructions, #black-hold, #quick-restart, #win-screen {
     position: fixed; inset: 0;
     background: #000;
     z-index: 30;
@@ -678,6 +678,62 @@
     background-color: #fff;
   }
 
+  /* ====== WIN SCREEN ====== */
+  /* z-index 150 — above #gameover (100), below jumpscare (200) so a stray
+     mannequin catch can't paint over the ending. Sits in the same diegetic
+     family as the menu screens (Special Elite, off-white text, grain). */
+  #win-screen {
+    z-index: 150;
+  }
+  #win-screen .title {
+    font-size: 42px;
+    letter-spacing: 4px;
+    margin-top: -6vh;
+    margin-left: -2vw;
+    color: rgba(220, 215, 200, 0.92);
+    text-align: center;
+  }
+  #win-screen .subtitle {
+    margin-top: 20px;
+    font-size: 13px;
+    letter-spacing: 5px;
+    opacity: 0.55;
+    text-transform: uppercase;
+  }
+  /* The "another shift" button fades in 3.5s after the overlay shows — after
+     the distant scream lands. Until then it's invisible and not clickable. */
+  #win-screen .win-btn {
+    margin-top: 60px;
+    background: transparent;
+    border: none;
+    color: rgba(240, 235, 220, 0.92);
+    font-family: inherit;
+    font-size: 18px;
+    letter-spacing: 5px;
+    cursor: pointer;
+    padding: 8px 4px;
+    position: relative;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1.2s ease-in;
+  }
+  #win-screen .win-btn.revealed {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #win-screen .win-btn::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 1px;
+    background: rgba(240, 235, 220, 0.85);
+    transition: width 600ms ease-out;
+  }
+  #win-screen .win-btn.revealed:hover::after { width: 100%; }
+
   /* Begin Shift black-hold fade */
   #black-hold {
     z-index: 31;
@@ -840,6 +896,13 @@
 
 <!-- Jumpscare photo overlay (fires on death, before revival quiz). -->
 <div id="jumpscare"></div>
+
+<!-- Win screen: shown after the player clicks the cleared exit door. -->
+<div id="win-screen" class="hidden">
+  <div class="title">SHIFT OVER.</div>
+  <div class="subtitle">Clocked out 5:14 AM</div>
+  <button id="win-btn" class="win-btn">another shift</button>
+</div>
 
 <div id="overlay" class="hidden">
   <h1>NIGHT SHIFT</h1>
@@ -1403,12 +1466,20 @@ function buildExitDoor() {
   const doorW = 1.8;
   const doorH = 2.6;
 
-  // Door panel itself.
+  // Door panel itself. Wrapped in a hinge Group so the win sequence can
+  // rotate the door around its LEFT edge (not its center — center-rotation
+  // clips the door half into the wall). doorPivot sits at the hinge in world
+  // space; door is positioned at (+doorW/2, doorH/2, 0) in pivot-local space
+  // so it visually occupies the same place as before.
+  const doorPivot = new THREE.Group();
+  doorPivot.position.set(doorX - doorW / 2, 0, doorZ);
+  scene.add(doorPivot);
   const doorMat = new THREE.MeshStandardMaterial({ color: 0x4a311c, roughness: 0.95 });
   const door = new THREE.Mesh(new THREE.BoxGeometry(doorW, doorH, 0.08), doorMat);
-  door.position.set(doorX, doorH / 2, doorZ);
-  door.userData = { kind: 'door' };
-  scene.add(door);
+  door.position.set(doorW / 2, doorH / 2, 0);
+  door.userData = { kind: 'door', pivot: doorPivot };
+  doorPivot.add(door);
+  interactables.push(door);  // clickable; resolveInteractable accepts kind:'door'
 
   // 4 recessed-look panels on the door face (2x2). Slightly darker color
   // sells the inset; very thin depth so they sit just in front of the
@@ -2541,7 +2612,7 @@ const MAX_INTERACT_DIST = 4.5;
 function resolveInteractable(node) {
   while (node) {
     const ud = node.userData;
-    if (ud && (ud.pickup || ud.unlocks || ud.ammoBox)) return node;
+    if (ud && (ud.pickup || ud.unlocks || ud.ammoBox || ud.kind === 'door')) return node;
     node = node.parent;
   }
   return null;
@@ -3026,6 +3097,58 @@ const SFX_SYNTHS = {
     noise.connect(bp); bp.connect(ng);
     ng.connect(limiter); ng.connect(reverb);
     noise.start(t0); noise.stop(t0 + dur);
+  },
+  // Door creak — band-passed noise with a downward frequency sweep (the
+  // characteristic "rising-then-falling pitch" of rusty hinges giving way).
+  // Plays during the door-open rotation in the win sequence.
+  doorCreak(ctx, t0) {
+    const dur = 0.5;
+    const bufSize = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass'; filter.Q.value = 6;
+    filter.frequency.setValueAtTime(820, t0);
+    filter.frequency.linearRampToValueAtTime(380, t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.18, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(filter); filter.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  },
+  // Door thunk — short low thud for the "still locked" feedback when the
+  // player clicks the door with blockages remaining.
+  doorThunk(ctx, t0) {
+    const dur = 0.18;
+    const osc = ctx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(110, t0);
+    osc.frequency.exponentialRampToValueAtTime(50, t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.14, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0 + dur);
+  },
+  // Distant scream — single low-pitched sawtooth voice through a heavy
+  // lowpass, so it sounds like it's coming from inside the store you just
+  // left. "You escaped. Someone didn't." Fires 3s after the win overlay.
+  distantScream(ctx, t0) {
+    const dur = 1.4;
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(440, t0);
+    osc.frequency.linearRampToValueAtTime(360, t0 + dur);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 600; lp.Q.value = 1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.06, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0 + dur);
   },
   // Distant clatter: one-shot for the BEGIN SHIFT black-hold. Far-off metal thud.
   distantClatter(ctx, t0) {
@@ -3550,6 +3673,13 @@ function onPlayerClick() {
       handleUnlockClick(selectedSlot, data.unlocks);
       return;
     }
+    if (data.kind === 'door') {
+      // ALWAYS return — never fall through to tryShoot for door clicks.
+      // Locked-door path plays a thunk + warn prompt; unlocked path fires
+      // the win sequence.
+      handleDoorClick();
+      return;
+    }
   }
   // No interactable hit — try shooting (no-op if gun isn't held or ammo is 0).
   tryShoot();
@@ -3585,6 +3715,10 @@ function updateInteractionPrompt() {
       text = `Needs ${neededName}`;
       warn = true;
     }
+  } else if (data.kind === 'door') {
+    const blocked = interactables.some(o => o.userData && o.userData.unlocks);
+    if (blocked) { text = 'Door is locked'; warn = true; }
+    else         { text = '[ Click ] Open exit'; }
   }
   if (!text) {
     promptEl.style.display = 'none';
@@ -3663,6 +3797,101 @@ async function showJumpscare() {
 window.__showJumpscare = showJumpscare;
 window.__jumpscareVisible = () => jumpscareEl.classList.contains('visible');
 window.__setJumpscareDuration = (ms) => { _jumpscareDur = ms; };
+
+// ============================================================
+// WIN SEQUENCE — door creak → black hold → SHIFT OVER overlay → distant scream
+// ============================================================
+// Wired write-once: `winShown` flag prevents re-entry even if isInMenu is
+// later flipped (defense in depth alongside the onPlayerClick guards).
+// The door's existing hinge Group (built in buildExitDoor) is rotated around
+// its left edge so the door swings outward instead of clipping through walls.
+// ============================================================
+let winShown = false;
+const winScreenEl = document.getElementById('win-screen');
+const winBtnEl    = document.getElementById('win-btn');
+
+function handleDoorClick() {
+  if (winShown || isInMenu) return;
+  const blocked = interactables.some(o => o.userData && o.userData.unlocks);
+  if (blocked) {
+    // Soft thunk + the warn-style prompt already shows "Door is locked".
+    playSfx('doorThunk');
+    return;
+  }
+  winShown = true;
+  showWinScreen();
+}
+
+async function showWinScreen() {
+  isInMenu = true;     // freezes mannequins / movement / input handlers
+  isGameOver = true;   // belt-and-suspenders: prevents triggerGameOver re-entry
+  if (controls.isLocked) controls.unlock();
+
+  // Door creak + 400ms outward rotation. Player sees the release in the
+  // 3D scene before the screen cuts to black.
+  const door = scene.children
+    .flatMap(c => c.userData && c.userData.kind === 'door' ? [c] : (c.children || []).filter(o => o.userData && o.userData.kind === 'door'))[0];
+  const pivot = door && door.userData.pivot;
+  if (pivot) {
+    playSfx('doorCreak');
+    const start = performance.now();
+    const dur = 400;
+    const targetRot = -Math.PI / 2.5;   // ~72° outward (toward -Z, away from player)
+    await new Promise(resolve => {
+      const tick = () => {
+        const t = Math.min(1, (performance.now() - start) / dur);
+        // Ease-out cubic for a satisfying "thunk into place"
+        const eased = 1 - Math.pow(1 - t, 3);
+        pivot.rotation.y = targetRot * eased;
+        if (t < 1) requestAnimationFrame(tick);
+        else resolve();
+      };
+      tick();
+    });
+  }
+
+  // 600ms black hold (reuses the existing #black-hold full-screen div),
+  // then the SHIFT OVER overlay fades up. The black hold gives the brain a
+  // moment of "what now" silence before the text lands.
+  blackHoldEl.classList.remove('hidden', 'fading');
+  await new Promise(r => setTimeout(r, 600));
+  winScreenEl.classList.remove('hidden');
+  // Drop the black hold once the win screen is in place.
+  blackHoldEl.classList.add('hidden');
+
+  // 3 seconds of silence, then ONE distant scream — "you escaped. someone
+  // didn't." Then the "another shift" button fades in so the player has a
+  // way out.
+  await new Promise(r => setTimeout(r, 3000));
+  playSfx('distantScream');
+  await new Promise(r => setTimeout(r, 600));
+  winBtnEl.classList.add('revealed');
+}
+
+// "another shift" → wipe the seenMenu flag so the full title + slides play
+// again, then hard-reload. Consistent with the rest of the game's restart
+// behavior (full reload re-initializes every system cleanly).
+winBtnEl.addEventListener('click', () => {
+  sessionStorage.removeItem('seenMenu');
+  location.reload();
+});
+
+// Test handles for agent-browser.
+window.__triggerWin = () => {
+  // Mirror the natural reach-the-win state: splice any remaining blockages
+  // out of interactables so the click path would have worked too.
+  for (let i = interactables.length - 1; i >= 0; i--) {
+    if (interactables[i].userData && interactables[i].userData.unlocks) {
+      scene.remove(interactables[i]);
+      interactables.splice(i, 1);
+    }
+  }
+  handleDoorClick();
+};
+window.__triggerWinOverlayOnly = () => { winShown = true; showWinScreen(); };
+window.__winShown = () => winShown;
+// Lets E2E exercise the locked-door no-op path without faking a mouse click.
+window.__clickDoor = () => handleDoorClick();
 
 // Catch fires → jumpscare → revival mini-game. Pass 3 easy questions in 50
 // seconds to revive with all progress intact. Fail or time out → final game

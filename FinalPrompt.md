@@ -213,10 +213,44 @@ ___
 - Provide the plan for my review and seek my approval
 - After implenetation and successful verification, commit and push
 
+---
+
 ## Feature - jump scare
 
 - make it so whenever you die in the game you get jumpscared by this photo with a jumscare sound 
 -this should happen before you answer the questions and the photo should show for 2.5 seconds
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+___
+
+## Feature - ending
+
+- after the player unlocks everything on the door they can open the door and it says congradulations you escaped koos's store
+
+- Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
+- Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
+- use `agent-browser` as appropriate
+- Have this plan reviewed by expert independent sub-agents and gather their feedback
+- Incorporate the feedback from sub-agents into the plan
+- Provide the plan for my review and seek my approval
+- After implenetation and successful verification, commit and push
+
+___
+
+## Feature - Audio
+
+- whenever you walk make an audio sound of the guy walking
+- keep a normal backround sound in the game so that it doesnt sound very quiet(store sound with the sound of slickering lights every so often)
+- make it so there is a gunshot sound whenever you shoot a gun
+- also add audio whenever you unlock a keyhole, take down a board, and when you swipe the keycard
+-finally add audio when the game is finished
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
 - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan
