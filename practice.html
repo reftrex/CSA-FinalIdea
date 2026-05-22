@@ -18,6 +18,26 @@
     z-index: 10;
   }
   #overlay h1 { margin: 0 0 12px; font-size: 36px; letter-spacing: 4px; color: #b33; }
+  /* Back-to-menu escape hatch — red accent because abandoning the run is a
+     destructive action. Sits below the click-to-resume copy so the player
+     reads the resume prompt first. */
+  #overlay-menu-btn {
+    margin-top: 28px;
+    background: transparent;
+    border: 1px solid rgba(220, 60, 60, 0.55);
+    color: rgba(220, 215, 200, 0.85);
+    font-family: 'Special Elite', 'Menlo', monospace;
+    font-size: 13px;
+    letter-spacing: 4px;
+    padding: 10px 22px;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  #overlay-menu-btn:hover {
+    background: rgba(220, 60, 60, 0.18);
+    border-color: rgba(220, 60, 60, 0.95);
+    color: rgba(240, 235, 220, 0.95);
+  }
   #overlay p  { margin: 6px 0; font-size: 16px; opacity: 0.85; }
   #overlay .key {
     display: inline-block;
@@ -913,6 +933,7 @@
     &nbsp;·&nbsp; <span class="key">Mouse</span> to look
     &nbsp;·&nbsp; <span class="key">Esc</span> to release the mouse
   </p>
+  <button id="overlay-menu-btn">BACK TO MENU</button>
 </div>
 
 <div id="info">Walk the aisles. Hold <b>Shift</b> to sprint.</div>
@@ -2384,6 +2405,14 @@ window.__THREE = THREE;        // expose Three.js for debug raycasts
 
 const overlay = document.getElementById('overlay');
 overlay.addEventListener('click', () => controls.lock());
+// "BACK TO MENU" button — wipes the seenMenu flag and reloads so the full
+// title screen + 4 slides play again. stopPropagation prevents the click
+// from bubbling to the overlay's click-to-lock handler above.
+document.getElementById('overlay-menu-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  sessionStorage.removeItem('seenMenu');
+  location.reload();
+});
 controls.addEventListener('lock', () => {
   overlay.style.display = 'none';
   // The overlay starts with class="hidden" so the boot title screen can
