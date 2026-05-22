@@ -2406,6 +2406,18 @@ slideNextBtn.addEventListener('click', () => {
 });
 document.getElementById('quick-punch').addEventListener('click', quickPunchIn);
 
+// After any quiz closes, re-acquire pointer-lock so the player drops straight
+// back into the game. The answer-button click counts as a recent user gesture
+// (Chrome's "transient activation" window is ~5s), so this lock attempt
+// succeeds in normal play. If the player exited via Esc, the gesture is gone,
+// lock() throws, and the unlock-event overlay stays as the fallback path.
+function tryRelock() {
+  if (isInMenu || isGameOver) return;
+  if (!controls.isLocked) {
+    try { controls.lock(); } catch (e) { /* no recent gesture — overlay shows */ }
+  }
+}
+
 // Branch: skip full menu if the player has already seen it this session.
 if (sessionStorage.getItem('seenMenu') === '1') {
   startMenuEl.classList.add('hidden');
@@ -3320,15 +3332,23 @@ async function runQuiz({pool, count, allowedWrong, timeLimit}) {
 // Click the ammo box → choose difficulty → 1 question → award bullets on pass.
 async function handleAmmoBoxClick() {
   if (quizBusy || isInMenu) return;
-  const diff = await showChoice([
-    { label: 'EASY — 1 question for +1 bullet',  value: 'easy' },
-    { label: 'HARD — 1 question for +3 bullets', value: 'hard' },
-    { label: 'CANCEL',                            value: null  },
-  ]);
-  if (!diff) return;
-  const r = await runQuiz({ pool: diff, count: 1, allowedWrong: 0 });
-  if (isGameOver) return;
-  if (r.passed) addAmmo(diff === 'easy' ? 1 : 3);
+  try {
+    const diff = await showChoice([
+      { label: 'EASY — 1 question for +1 bullet',  value: 'easy' },
+      { label: 'HARD — 1 question for +3 bullets', value: 'hard' },
+      { label: 'CANCEL',                            value: null  },
+    ]);
+    if (!diff) return;
+    const r = await runQuiz({ pool: diff, count: 1, allowedWrong: 0 });
+    if (isGameOver) return;
+    if (r.passed) addAmmo(diff === 'easy' ? 1 : 3);
+  } finally {
+    // The answer-button click is a recent user gesture, so re-acquiring
+    // pointer-lock works without forcing the player through the click-to-resume
+    // overlay. If the player exited via Esc instead, lock() throws and the
+    // unlock-event overlay stays as a fallback path.
+    tryRelock();
+  }
 }
 
 // Removes every interactable mesh with the matching `unlocks` value AND
@@ -3401,37 +3421,41 @@ function respawnRedMannequin() {
 
 async function handleUnlockClick(usedSlot, unlocksType) {
   if (quizBusy) return;
-  let choice;
-  if (unlocksType === 'keycard') {
-    // Keycard is the hardest gate — 8 hard questions, no wrong allowed.
-    // No difficulty picker (only one option).
-    choice = { pool: 'hard', count: 8, allowedWrong: 0 };
-  } else {
-    const picked = await showChoice([
-      { label: '10 easy questions — 0 wrong allowed', value: { pool: 'easy', count: 10, allowedWrong: 0 } },
-      { label: '5 hard questions — 1 wrong allowed',  value: { pool: 'hard', count: 5,  allowedWrong: 1 } },
-      { label: 'CANCEL', value: null },
-    ]);
-    if (!picked) return;
-    choice = picked;
-  }
-  const r = await runQuiz(choice);
-  if (isGameOver) return;
-  if (r.passed) {
-    _consumeUnlock(unlocksType, usedSlot);
-  } else if (r.cancelled) {
-    // No penalty on cancel (keycard quiz ignores Esc, so this only fires for
-    // crowbar/key paths).
-    return;
-  } else {
-    // Fail: lose the tool. Then apply the type-specific consequence.
-    inventory[usedSlot] = null;
-    refreshHeldItem();
-    if (unlocksType === 'crowbar' || unlocksType === 'key') {
-      respawnTool(unlocksType);
-    } else if (unlocksType === 'keycard') {
-      respawnRedMannequin();
+  try {
+    let choice;
+    if (unlocksType === 'keycard') {
+      // Keycard is the hardest gate — 8 hard questions, no wrong allowed.
+      // No difficulty picker (only one option).
+      choice = { pool: 'hard', count: 8, allowedWrong: 0 };
+    } else {
+      const picked = await showChoice([
+        { label: '10 easy questions — 0 wrong allowed', value: { pool: 'easy', count: 10, allowedWrong: 0 } },
+        { label: '5 hard questions — 1 wrong allowed',  value: { pool: 'hard', count: 5,  allowedWrong: 1 } },
+        { label: 'CANCEL', value: null },
+      ]);
+      if (!picked) return;
+      choice = picked;
     }
+    const r = await runQuiz(choice);
+    if (isGameOver) return;
+    if (r.passed) {
+      _consumeUnlock(unlocksType, usedSlot);
+    } else if (r.cancelled) {
+      // No penalty on cancel (keycard quiz ignores Esc, so this only fires for
+      // crowbar/key paths).
+      return;
+    } else {
+      // Fail: lose the tool. Then apply the type-specific consequence.
+      inventory[usedSlot] = null;
+      refreshHeldItem();
+      if (unlocksType === 'crowbar' || unlocksType === 'key') {
+        respawnTool(unlocksType);
+      } else if (unlocksType === 'keycard') {
+        respawnRedMannequin();
+      }
+    }
+  } finally {
+    tryRelock();
   }
 }
 
@@ -3590,7 +3614,11 @@ async function triggerGameOver() {
   const r = await runQuiz({ pool: 'easy', count: 3, allowedWrong: 0, timeLimit: 50 });
   if (r.passed) {
     softRetry();
-    overlay.style.display = 'flex';   // re-engage via click-to-lock
+    // The last answer click is a recent gesture — re-lock cleanly so the
+    // player drops straight back into the game without an extra click. The
+    // unlock event already set the click-to-resume overlay; if lock fails
+    // (e.g. browser focus issue) the overlay stays as a fallback.
+    tryRelock();
   } else {
     // Hard fail: show the gameover overlay with RESTART button.
     gameoverEl.style.display = 'flex';
