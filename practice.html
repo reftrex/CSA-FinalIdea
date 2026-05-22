@@ -1094,11 +1094,11 @@ scene.add(new THREE.AmbientLight(AMBIENT_COLOR, AMBIENT_INTENSITY));
 // Default ON; the inventory system later toggles it based on the selected slot.
 const flashlight = new THREE.SpotLight(
   0xffeed8,   // warm white
-  3.2,        // intensity
-  18,         // distance falloff range
-  Math.PI / 6.5, // cone half-angle (~28°)
+  6.0,        // intensity — brighter so the player can actually see
+  26,         // distance falloff range — extended throw
+  Math.PI / 5.5, // cone half-angle (~33°) — slightly wider
   0.45,       // penumbra (soft edge)
-  1.2         // decay
+  1.0         // decay — gentler falloff
 );
 flashlight.position.set(0, -0.08, 0); // chest-height feel
 camera.add(flashlight);
@@ -1647,6 +1647,14 @@ function buildExitDoor() {
   scene.add(rag);
 }
 buildExitDoor();
+// Warm wall-pack light above the exit door — lets the player see the
+// three blockages (boards, padlock, keypad) clearly when standing in
+// front of the door. Door is at (0, _, hz-0.16); lintel sits ~2.7m up.
+{
+  const doorLight = new THREE.PointLight(0xffd8a0, 1.6, 5.5, 1.6);
+  doorLight.position.set(0, 3.4, STORE_D / 2 - 1.0);
+  scene.add(doorLight);
+}
 
 // ============================================================
 // AMMO BOX — small green crate near the spawn. Click to add 1 bullet.
@@ -1685,6 +1693,14 @@ function buildAmmoBox() {
   return g;
 }
 buildAmmoBox();
+// Small warm light over the ammo box so the player notices it sitting
+// near spawn. Same point-light pattern as the door lamp, just dimmer
+// and closer to the floor since the crate is short.
+{
+  const ammoLight = new THREE.PointLight(0xffd8a0, 1.2, 4.5, 1.8);
+  ammoLight.position.set(-2, 2.0, 41);
+  scene.add(ammoLight);
+}
 
 // ============================================================
 // SHELVES — multi-tier, back-to-back, ready to hold items later.
