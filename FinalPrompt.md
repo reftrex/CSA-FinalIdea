@@ -251,6 +251,9 @@ ___
 - make it so there is a gunshot sound whenever you shoot a gun
 - also add audio whenever you unlock a keyhole, take down a board, and when you swipe the keycard
 -finally add audio when the game is finished
+-and also for the jumpscare sound from when a manaquin kills you, get an audio from online if youre allowed to that is a someone screaming very scary instead of what you are using right now. if you can't thats okay.
+
+-analize audio from other horror games and replicate
 
 - Please analyze the current game code in this repo and come up with a step-by-step plan to implement this feature
 - Each step should also include verification(s) that will be used to verify the step during implementation before moving to the next step in the plan

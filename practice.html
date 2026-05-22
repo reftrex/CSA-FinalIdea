@@ -2492,6 +2492,9 @@ function beginShift() {
       setTimeout(() => { blackHoldEl.classList.add('hidden'); }, 650);
       isInMenu = false;
       sessionStorage.setItem('seenMenu', '1');
+      // Start the store ambience + breathing layer only if the player didn't
+      // die/menu out during the 1.2s setTimeout window.
+      if (!isGameOver && !isInMenu) { startDrone('storeAmbience'); startDrone('breathing'); }
     } else {
       // Pointer-lock was rejected (Chrome focus quirk, etc.) — restore the menu.
       blackHoldEl.classList.add('hidden');
@@ -2513,6 +2516,7 @@ function quickPunchIn() {
       stopDrone('fluorHum');
       setTimeout(() => { blackHoldEl.classList.add('hidden'); }, 650);
       isInMenu = false;
+      if (!isGameOver && !isInMenu) { startDrone('storeAmbience'); startDrone('breathing'); }
     } else {
       blackHoldEl.classList.add('hidden');
       quickRestartEl.classList.remove('hidden');
@@ -2567,6 +2571,9 @@ window.__skipMenu   = () => {
   quickRestartEl.classList.add('hidden');
   blackHoldEl.classList.add('hidden');
   stopDrone('fluorHum');
+  // Match the natural BEGIN SHIFT flow — drones up so E2E tests aren't silent.
+  startDrone('storeAmbience');
+  startDrone('breathing');
   // Mimic the natural flow: leave overlay visible so click-to-lock works as before.
   // Must clear .hidden too (added at boot) or display:none !important wins.
   overlay.classList.remove('hidden');
@@ -2745,6 +2752,7 @@ function tryShoot() {
   if (ammo <= 0) { dryFire(); return; }
   ammo--;
   updateAmmoUI();
+  playSfx('gunshot');
   triggerMuzzleFlash();
   triggerRecoil();
   // Find closest mannequin under the crosshair with line of sight.
@@ -3009,6 +3017,8 @@ const CSA_QUESTIONS = {
 // the gates.
 // ============================================================
 let _audioCtx = null;
+let _sharedReverb = null;
+let _sharedLimiter = null;
 function audio() {
   if (!_audioCtx) {
     const Ctor = window.AudioContext || window.webkitAudioContext;
@@ -3018,6 +3028,35 @@ function audio() {
   // Browsers suspend the context until a user gesture — resume on first use.
   if (_audioCtx.state === 'suspended') _audioCtx.resume();
   return _audioCtx;
+}
+// Shared reverb tail + master limiter — built lazily on first use so frequent
+// one-shots (gunshot, footstep) don't allocate a fresh ConvolverNode +
+// DynamicsCompressor each fire. `getReverbSend(ctx)` returns a GainNode that
+// other synths can connect into; the reverb wet signal flows through the
+// shared limiter into destination.
+function getReverbSend(ctx) {
+  if (!_sharedLimiter) {
+    _sharedLimiter = ctx.createDynamicsCompressor();
+    _sharedLimiter.threshold.value = -3;
+    _sharedLimiter.knee.value = 0;
+    _sharedLimiter.ratio.value = 16;
+    _sharedLimiter.attack.value = 0.002;
+    _sharedLimiter.release.value = 0.06;
+    _sharedLimiter.connect(ctx.destination);
+  }
+  if (!_sharedReverb) {
+    const len = Math.floor(ctx.sampleRate * 1.2);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    }
+    _sharedReverb = ctx.createConvolver(); _sharedReverb.buffer = buf;
+    _sharedReverb.connect(_sharedLimiter);
+  }
+  const send = ctx.createGain();
+  send.connect(_sharedReverb);
+  return send;
 }
 
 // One-shot synth functions. Each takes (ctx, when) and schedules notes.
@@ -3098,8 +3137,10 @@ const SFX_SYNTHS = {
     subOsc.connect(subDist); subDist.connect(subG); subG.connect(limiter);
     subOsc.start(t0); subOsc.stop(t0 + dur);
 
-    // ---- Layer 2: 4-voice vocal chorus ---------------------------------
-    for (const f of [600, 680, 750, 820]) {
+    // ---- Layer 2: 6-voice vocal chorus ---------------------------------
+    // Bumped from 4 to 6 voices per the latest reviewer pass — wider detuning
+    // sells the "shouldn't exist" dissonance against the smiling photo.
+    for (const f of [560, 620, 680, 750, 820, 900]) {
       const osc = ctx.createOscillator(); osc.type = 'sawtooth';
       // Pitch envelope: hold → mid-scream lurch → fading-breath tail.
       osc.frequency.setValueAtTime(f, t0);
@@ -3205,6 +3246,187 @@ const SFX_SYNTHS = {
     osc.connect(lp); lp.connect(g); g.connect(ctx.destination);
     osc.start(t0); osc.stop(t0 + dur);
   },
+  // ============ Gameplay one-shots (footstep / gunshot / tools / win) ============
+
+  // Footstep — short filtered noise burst, lowpassed to feel like a foot on
+  // grimy linoleum. Pitch + gain jittered per call so the cadence doesn't
+  // sound robotic. Triggered from updatePlayer on floor-diff phase crossings.
+  footstep(ctx, t0) {
+    const dur = 0.08;
+    const bufSize = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) {
+      const env = Math.exp(-i / (ctx.sampleRate * 0.025));
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    src.playbackRate.value = 0.95 + Math.random() * 0.10;   // ±5%
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1200; lp.Q.value = 0.7;
+    const g = ctx.createGain();
+    const peak = 0.07 + Math.random() * 0.024;              // ±15% gain
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  },
+  // Foot scuff — 1-in-12 variant. Longer, drag-style, with a heel-catch
+  // tail. Breaks the perfect-cadence "wallpaper" effect at the macro level.
+  footScuff(ctx, t0) {
+    const dur = 0.22;
+    const bufSize = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.05, t0 + 0.02);
+    g.gain.linearRampToValueAtTime(0.04, t0 + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(lp); lp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  },
+
+  // Gunshot — sharp click attack + sub-bass thump + bright tail through the
+  // shared reverb. Master gain 0.18 leaves headroom under the limiter for the
+  // scream which still needs to be the loudest single event.
+  gunshot(ctx, t0) {
+    const reverbSend = getReverbSend(ctx);
+    // Click: 12ms wideband noise burst
+    const clickDur = 0.012;
+    const clickBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * clickDur), ctx.sampleRate);
+    const cd = clickBuf.getChannelData(0);
+    for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1);
+    const clickSrc = ctx.createBufferSource(); clickSrc.buffer = clickBuf;
+    const clickG = ctx.createGain();
+    clickG.gain.setValueAtTime(0.0001, t0);
+    clickG.gain.exponentialRampToValueAtTime(0.18, t0 + 0.001);
+    clickG.gain.exponentialRampToValueAtTime(0.0001, t0 + clickDur);
+    clickSrc.connect(clickG); clickG.connect(ctx.destination); clickG.connect(reverbSend);
+    clickSrc.start(t0); clickSrc.stop(t0 + clickDur);
+    // Sub thump: 60Hz sine pitched down, 200ms
+    const subDur = 0.20;
+    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 60;
+    sub.frequency.exponentialRampToValueAtTime(35, t0 + subDur);
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.0001, t0);
+    subG.gain.exponentialRampToValueAtTime(0.16, t0 + 0.005);
+    subG.gain.exponentialRampToValueAtTime(0.0001, t0 + subDur);
+    sub.connect(subG); subG.connect(ctx.destination); subG.connect(reverbSend);
+    sub.start(t0); sub.stop(t0 + subDur);
+    // Bright tail: filtered noise crackle, 150ms
+    const tailDur = 0.15;
+    const tBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * tailDur), ctx.sampleRate);
+    const td = tBuf.getChannelData(0);
+    for (let i = 0; i < td.length; i++) td[i] = (Math.random() * 2 - 1) * 0.4;
+    const tailSrc = ctx.createBufferSource(); tailSrc.buffer = tBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = 0.9;
+    const tailG = ctx.createGain();
+    tailG.gain.setValueAtTime(0.0001, t0 + 0.005);
+    tailG.gain.exponentialRampToValueAtTime(0.12, t0 + 0.012);
+    tailG.gain.exponentialRampToValueAtTime(0.0001, t0 + tailDur);
+    tailSrc.connect(bp); bp.connect(tailG); tailG.connect(ctx.destination); tailG.connect(reverbSend);
+    tailSrc.start(t0); tailSrc.stop(t0 + tailDur);
+  },
+
+  // Key in lock — two short high-frequency clicks (tumblers falling into place).
+  keyClick(ctx, t0) {
+    for (const [delay, freq] of [[0, 1900], [0.09, 2200]]) {
+      const tt = t0 + delay;
+      const osc = ctx.createOscillator(); osc.type = 'square'; osc.frequency.value = freq;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 4;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, tt);
+      g.gain.exponentialRampToValueAtTime(0.12, tt + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.06);
+      osc.connect(bp); bp.connect(g); g.connect(ctx.destination);
+      osc.start(tt); osc.stop(tt + 0.06);
+    }
+  },
+  // Crowbar / boards — wood splinter + nail-pull. Bursty noise with a slight
+  // downward sweep on the filter, models the squeak of a nail leaving wood.
+  woodSnap(ctx, t0) {
+    const dur = 0.32;
+    const bufSize = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.7;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 3;
+    bp.frequency.setValueAtTime(1800, t0);
+    bp.frequency.linearRampToValueAtTime(600, t0 + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.14, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  },
+  // Keycard swipe — short sine sweep up + a confirmation chime, the way every
+  // modern fob reader sounds. Distinct from the other tool SFX so the player
+  // can pattern-match key/crowbar/keycard by ear.
+  keycardBeep(ctx, t0) {
+    const swDur = 0.18;
+    const sw = ctx.createOscillator(); sw.type = 'sine';
+    sw.frequency.setValueAtTime(220, t0);
+    sw.frequency.exponentialRampToValueAtTime(640, t0 + swDur);
+    const swG = ctx.createGain();
+    swG.gain.setValueAtTime(0.0001, t0);
+    swG.gain.exponentialRampToValueAtTime(0.10, t0 + 0.01);
+    swG.gain.exponentialRampToValueAtTime(0.0001, t0 + swDur);
+    sw.connect(swG); swG.connect(ctx.destination);
+    sw.start(t0); sw.stop(t0 + swDur);
+    // Confirmation chime — two tones, ~50ms apart
+    for (const [delay, freq] of [[0.22, 880], [0.30, 1320]]) {
+      const tt = t0 + delay;
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, tt);
+      g.gain.exponentialRampToValueAtTime(0.08, tt + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.10);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(tt); o.stop(tt + 0.10);
+    }
+  },
+
+  // Light flicker — quick band-passed noise crackle. Fired from the Poisson
+  // burst scheduler in animate(); the burst spaces 2-4 of these ~100ms apart.
+  lightFlicker(ctx, t0) {
+    const dur = 0.14;
+    const bufSize = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2500; bp.Q.value = 1.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.10, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  },
+
+  // Win chord — slow low sustain under the "another shift" button reveal.
+  // 80 + 120 Hz sines, 4-second fade. Subdued, not triumphant — the relief
+  // is what the silence + distant scream already earned.
+  winChord(ctx, t0) {
+    const dur = 4.0;
+    for (const f of [80, 120]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.04, t0 + 0.5);
+      g.gain.linearRampToValueAtTime(0.025, t0 + dur * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + dur);
+    }
+  },
+
   // Distant clatter: one-shot for the BEGIN SHIFT black-hold. Far-off metal thud.
   distantClatter(ctx, t0) {
     const dur = 0.55;
@@ -3273,6 +3495,92 @@ const SFX_DRONES = {
         g.gain.setValueAtTime(g.gain.value, t);
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
         osc.stop(t + 0.25); osc2.stop(t + 0.25);
+      },
+    };
+  },
+  // Store ambience — the *Silent Hill* trick: two low sines a few Hz apart
+  // create a slow beating (~2 Hz throb) under faint noise. NOT pink-noise-
+  // through-lowpass (the cliche bed). Subtle enough that the player notices
+  // it only when it cuts at the jumpscare.
+  storeAmbience(ctx) {
+    const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = 55;
+    const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 57;
+    const sineG = ctx.createGain(); sineG.gain.value = 0.0001;
+    o1.connect(sineG); o2.connect(sineG);
+    // Faint room-tone noise at 0.015, heavily lowpassed.
+    const bufSize = ctx.sampleRate * 2;
+    const noiseBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) nd[i] = (Math.random() * 2 - 1) * 0.3;
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 240; lp.Q.value = 0.7;
+    const noiseG = ctx.createGain(); noiseG.gain.value = 0.0001;
+    src.connect(lp); lp.connect(noiseG);
+    sineG.connect(ctx.destination); noiseG.connect(ctx.destination);
+    o1.start(); o2.start(); src.start();
+    sineG.gain.exponentialRampToValueAtTime(0.045, ctx.currentTime + 1.5);
+    noiseG.gain.exponentialRampToValueAtTime(0.015, ctx.currentTime + 1.5);
+    return {
+      stop() {
+        const t = ctx.currentTime;
+        for (const g of [sineG, noiseG]) {
+          g.gain.cancelScheduledValues(t);
+          g.gain.setValueAtTime(g.gain.value, t);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+        }
+        o1.stop(t + 0.5); o2.stop(t + 0.5); src.stop(t + 0.5);
+      },
+    };
+  },
+  // Breathing — stateful drone tied to player exertion + mannequin-LOS.
+  // setMode('rest' | 'ragged' | 'held') changes the LFO rate and depth on
+  // the gain so the player hears themselves: slow at rest, fast/strained
+  // after sprinting, held silent when a mannequin is in the crosshair.
+  breathing(ctx) {
+    // Voice fundamental: low formant-shaped vocal noise.
+    const bufSize = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    // Two formant peaks roughly matching a closed-mouth breath.
+    const f1 = ctx.createBiquadFilter(); f1.type = 'peaking'; f1.frequency.value = 380; f1.Q.value = 6; f1.gain.value = 9;
+    const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = 1100; f2.Q.value = 6; f2.gain.value = 6;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800; lp.Q.value = 0.7;
+    // Master gain modulated by an LFO to create the inhale/exhale swell.
+    const masterG = ctx.createGain(); masterG.gain.value = 0;
+    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.28;
+    const lfoDepth = ctx.createGain(); lfoDepth.gain.value = 0.035;
+    const lfoOffset = ctx.createConstantSource(); lfoOffset.offset.value = 0.04;
+    lfo.connect(lfoDepth); lfoDepth.connect(masterG.gain);
+    lfoOffset.connect(masterG.gain);
+    src.connect(f1); f1.connect(f2); f2.connect(lp); lp.connect(masterG); masterG.connect(ctx.destination);
+    src.start(); lfo.start(); lfoOffset.start();
+    function setMode(mode) {
+      const t = ctx.currentTime;
+      if (mode === 'held') {
+        // Silent — player is staring at a mannequin, holding breath.
+        lfoDepth.gain.linearRampToValueAtTime(0.0, t + 0.2);
+        lfoOffset.offset.linearRampToValueAtTime(0.0, t + 0.2);
+      } else if (mode === 'ragged') {
+        // Sprinting / recovering — fast, deeper.
+        lfo.frequency.linearRampToValueAtTime(0.85, t + 0.4);
+        lfoDepth.gain.linearRampToValueAtTime(0.06, t + 0.4);
+        lfoOffset.offset.linearRampToValueAtTime(0.07, t + 0.4);
+      } else {
+        // rest — slow, calm.
+        lfo.frequency.linearRampToValueAtTime(0.28, t + 0.6);
+        lfoDepth.gain.linearRampToValueAtTime(0.035, t + 0.6);
+        lfoOffset.offset.linearRampToValueAtTime(0.04, t + 0.6);
+      }
+    }
+    return {
+      setMode,
+      stop() {
+        const t = ctx.currentTime;
+        lfoDepth.gain.linearRampToValueAtTime(0.0, t + 0.3);
+        lfoOffset.offset.linearRampToValueAtTime(0.0, t + 0.3);
+        src.stop(t + 0.4); lfo.stop(t + 0.4); lfoOffset.stop(t + 0.4);
       },
     };
   },
@@ -3383,7 +3691,11 @@ function _showModal(variant = 'standard') {
 function _hideModal() {
   quizEl.classList.remove('visible');
   document.body.classList.remove('quiz-active');
-  stopAllDrones();
+  // Only stop the modal-owned drones — explicit allowlist so non-modal
+  // drones (storeAmbience, breathing) survive quiz transitions. A blocklist
+  // would silently leak when new drones get added later.
+  stopDrone('subBass');
+  stopDrone('tapeHiss');
 }
 function _resetChoices() {
   for (const b of quizChoiceEls) {
@@ -3602,6 +3914,10 @@ function _consumeUnlock(unlocksType, usedSlot) {
   }
   inventory[usedSlot] = null;
   refreshHeldItem();
+  // Per-tool success SFX so the player can pattern-match by ear:
+  // tumblers for the key, wood + nail for the crowbar, fob-reader chime for keycard.
+  const sfx = { key: 'keyClick', crowbar: 'woodSnap', keycard: 'keycardBeep' }[unlocksType];
+  if (sfx) playSfx(sfx);
 }
 
 // Predictable shelf/table spots where lost tools re-spawn. All in the
@@ -3831,6 +4147,11 @@ new Image().src = JUMPSCARE_IMG_URL;
 
 async function showJumpscare() {
   try {
+    // Cut the store ambience + breathing — silence frames the scream. The
+    // revival quiz starts the tape-hiss bed if the player passes; if they
+    // hard-fail, the reload re-initializes everything.
+    stopDrone('storeAmbience');
+    stopDrone('breathing');
     // Order matters: add 'visible' AND 'flash' in the same frame so the OS
     // cursor (re-shown after controls.unlock()) is covered by `cursor: none`
     // before the next compositor frame settles.
@@ -3878,6 +4199,9 @@ function handleDoorClick() {
 }
 
 async function showWinScreen() {
+  // Cut the in-game audio first so the door creak + black hold land in silence.
+  stopDrone('storeAmbience');
+  stopDrone('breathing');
   isInMenu = true;     // freezes mannequins / movement / input handlers
   isGameOver = true;   // belt-and-suspenders: prevents triggerGameOver re-entry
   if (controls.isLocked) controls.unlock();
@@ -3920,6 +4244,8 @@ async function showWinScreen() {
   await new Promise(r => setTimeout(r, 3000));
   playSfx('distantScream');
   await new Promise(r => setTimeout(r, 600));
+  // Slow low chord under the button reveal — subdued release, not a fanfare.
+  playSfx('winChord');
   winBtnEl.classList.add('revealed');
 }
 
@@ -3964,6 +4290,10 @@ async function triggerGameOver() {
     // unlock event already set the click-to-resume overlay; if lock fails
     // (e.g. browser focus issue) the overlay stays as a fallback.
     tryRelock();
+    // Ambience was stopped by showJumpscare; revive it now that the world
+    // is live again. Same applies to the breathing layer.
+    startDrone('storeAmbience');
+    startDrone('breathing');
   } else {
     // Hard fail: show the gameover overlay with RESTART button.
     gameoverEl.style.display = 'flex';
@@ -4072,6 +4402,16 @@ function updateMannequins(dt) {
   }
 }
 
+// Footstep cadence is decoupled from the head-bob frequency: a real walking
+// stride is ~1.4 steps/sec, well below WALK_BOB_FREQ=6 rad/s. We accumulate
+// a separate stridePhase and detect floor-diff crossings of Math.PI so the
+// detector survives dt spikes and tab-blur freq changes.
+let stridePhase = 0;
+let lastStridePhase = 0;
+let footstepCount = 0;
+const STRIDE_FREQ_WALK   = 1.4 * Math.PI;   // π rad per half-cycle → 1.4 strikes/sec
+const STRIDE_FREQ_SPRINT = 3.0 * Math.PI;
+
 function updatePlayer(dt) {
   if (isInMenu) return;
   camera.getWorldDirection(forward);
@@ -4105,9 +4445,23 @@ function updatePlayer(dt) {
     walkPhase += dt * (sprinting ? SPRINT_BOB_FREQ : WALK_BOB_FREQ);
     const amp = BOB_AMPLITUDE * (sprinting ? 1.4 : 1.0);
     camera.position.y = PLAYER_HEIGHT + Math.sin(walkPhase) * amp;
+
+    // Footstep cadence — advance stridePhase and fire SFX on each crossing
+    // of a Math.PI boundary. Every 12th step is a "scuff" variant so the
+    // cadence doesn't read as wallpaper.
+    stridePhase += dt * (sprinting ? STRIDE_FREQ_SPRINT : STRIDE_FREQ_WALK);
+    const crossings = Math.floor(stridePhase / Math.PI) - Math.floor(lastStridePhase / Math.PI);
+    for (let i = 0; i < crossings; i++) {
+      footstepCount++;
+      playSfx(footstepCount % 12 === 0 ? 'footScuff' : 'footstep');
+    }
+    lastStridePhase = stridePhase;
   } else {
     // Ease the camera back to the standing height when stopped.
     camera.position.y += (PLAYER_HEIGHT - camera.position.y) * Math.min(1, dt * 8);
+    // Don't reset stridePhase — the floor-diff detector handles resumption
+    // cleanly because lastStridePhase tracks the live value.
+    lastStridePhase = stridePhase;
   }
 }
 
@@ -4121,6 +4475,52 @@ const clock = new THREE.Clock();
 // Simple FPS averaging — count frames over a 0.5 s window.
 let fpsFrames = 0, fpsAccumDt = 0, fpsValue = 0;
 
+// Light-flicker burst scheduler — Poisson clusters of 2-4 crackles ~100ms
+// apart, then 30-60s of silence. Per-frame coin flip would produce evenly-
+// spaced flickers which reads as a metronome; bursts feel like real bad
+// wiring. State is global so the schedule persists across frames.
+let _nextFlickerBurstAt = 0;     // performance.now() target for next burst
+let _flickerBurstRemaining = 0;  // crackles left in current burst
+let _nextFlickerInBurstAt = 0;
+function maybeFlicker(now) {
+  // Gate — never flicker while the world is paused.
+  if (isInMenu || isGameOver || isPaused || quizBusy) return;
+  if (_flickerBurstRemaining > 0) {
+    if (now >= _nextFlickerInBurstAt) {
+      playSfx('lightFlicker');
+      _flickerBurstRemaining--;
+      _nextFlickerInBurstAt = now + 80 + Math.random() * 160;
+    }
+  } else if (now >= _nextFlickerBurstAt) {
+    _flickerBurstRemaining = 2 + Math.floor(Math.random() * 3);   // 2-4 crackles
+    _nextFlickerInBurstAt = now;
+    _nextFlickerBurstAt = now + 30000 + Math.random() * 30000;    // 30-60s next burst
+  }
+}
+
+// Breathing layer mode driver — pick rest / ragged / held based on player
+// state, push to the breathing drone via its setMode handle. Tracked here
+// instead of in the drone itself so the policy is colocated with game logic.
+let _breathLastMode = 'rest';
+function updateBreathingMode() {
+  if (isInMenu || isGameOver) return;
+  const drone = _activeDrones.get('breathing');
+  if (!drone || !drone.setMode) return;
+  // 'held' — a mannequin sprite is within the central crosshair tolerance.
+  let inLOS = false;
+  for (const m of mannequins) {
+    if (isLookedAt(m.sprite.position)) { inLOS = true; break; }
+  }
+  let mode;
+  if (inLOS) mode = 'held';
+  else if (sprintCharge < SPRINT_MAX * 0.85) mode = 'ragged';
+  else mode = 'rest';
+  if (mode !== _breathLastMode) {
+    drone.setMode(mode);
+    _breathLastMode = mode;
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -4128,6 +4528,8 @@ function animate() {
   updateMannequins(dt);
   updateGunAnim(dt);
   updateInteractionPrompt();
+  maybeFlicker(performance.now());
+  updateBreathingMode();
 
   // ----------------------------------------------------------
   // HORROR HOOKS — uncomment when you're ready.
